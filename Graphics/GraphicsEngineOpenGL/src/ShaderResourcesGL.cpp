@@ -746,6 +746,7 @@ void ShaderResourcesGL::LoadUniforms(const LoadUniformsAttribs& Attribs)
 
         GLuint UniformBlockIndex = glGetUniformBlockIndex(GLProgram, Name.data());
         DEV_CHECK_GL_ERROR("Unable to get active uniform block index\n");
+
         // glGetUniformBlockIndex( program, uniformBlockName );
         // is equivalent to
         // glGetProgramResourceIndex( program, GL_UNIFORM_BLOCK, uniformBlockName );
