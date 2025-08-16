@@ -49,6 +49,7 @@
 #include "GraphicsAccessories.hpp"
 #include "GraphicsUtilities.h"
 #include "ShaderSourceFactoryUtils.hpp"
+#include "DXCompiler.hpp"
 
 namespace Diligent
 {
@@ -144,13 +145,25 @@ std::string RenderStateCacheImpl::MakeHashStr(const char* Name, const XXH128Hash
 }
 
 
-static size_t ComputeDeviceAttribsHash(IRenderDevice* pDevice)
+static void ComputeDeviceAttribsHash(XXH128State& Hasher, IRenderDevice* pDevice)
 {
-    if (pDevice == nullptr)
-        return 0;
+    if (pDevice != nullptr)
+    {
+        const RenderDeviceInfo& DeviceInfo = pDevice->GetDeviceInfo();
+        Hasher.Update(DeviceInfo.Type, DeviceInfo.NDC.MinZ, DeviceInfo.Features.SeparablePrograms);
+    }
+}
 
-    const RenderDeviceInfo& DeviceInfo = pDevice->GetDeviceInfo();
-    return ComputeHash(DeviceInfo.Type, DeviceInfo.NDC.MinZ, DeviceInfo.Features.SeparablePrograms);
+static const char* GetDXCompilerLibName(IRenderDevice* pDevice)
+{
+    if (IDXCompiler* pDXCompiler = GetDeviceDXCompiler(pDevice))
+    {
+        return pDXCompiler->GetLibraryName().c_str();
+    }
+    else
+    {
+        return nullptr;
+    }
 }
 
 RenderStateCacheImpl::RenderStateCacheImpl(IReferenceCounters*               pRefCounters,
@@ -159,7 +172,6 @@ RenderStateCacheImpl::RenderStateCacheImpl(IReferenceCounters*               pRe
     // clang-format off
     m_pDevice      {CreateInfo.pDevice},
     m_DeviceType   {CreateInfo.pDevice != nullptr ? CreateInfo.pDevice->GetDeviceInfo().Type : RENDER_DEVICE_TYPE_UNDEFINED},
-    m_DeviceHash   {ComputeDeviceAttribsHash(CreateInfo.pDevice)},
     m_CI           {CreateInfo},
     m_pReloadSource{CreateInfo.pReloadSource}
 // clang-format on
@@ -191,7 +203,8 @@ RenderStateCacheImpl::RenderStateCacheImpl(IReferenceCounters*               pRe
             break;
 
         case RENDER_DEVICE_TYPE_D3D12:
-            SerializationDeviceCI.D3D12.ShaderVersion = SerializationDeviceCI.DeviceInfo.MaxShaderVersion.HLSL;
+            SerializationDeviceCI.D3D12.ShaderVersion  = SerializationDeviceCI.DeviceInfo.MaxShaderVersion.HLSL;
+            SerializationDeviceCI.D3D12.DxCompilerPath = GetDXCompilerLibName(m_pDevice);
             break;
 
         case RENDER_DEVICE_TYPE_GL:
@@ -201,7 +214,8 @@ RenderStateCacheImpl::RenderStateCacheImpl(IReferenceCounters*               pRe
             break;
 
         case RENDER_DEVICE_TYPE_VULKAN:
-            SerializationDeviceCI.Vulkan.ApiVersion = SerializationDeviceCI.DeviceInfo.APIVersion;
+            SerializationDeviceCI.Vulkan.ApiVersion     = SerializationDeviceCI.DeviceInfo.APIVersion;
+            SerializationDeviceCI.Vulkan.DxCompilerPath = GetDXCompilerLibName(m_pDevice);
             break;
 
         case RENDER_DEVICE_TYPE_METAL:
@@ -318,7 +332,8 @@ bool RenderStateCacheImpl::CreateShaderInternal(const ShaderCreateInfo& ShaderCI
 #else
     constexpr bool IsDebug = false;
 #endif
-    Hasher.Update(ShaderCI, m_DeviceHash, IsDebug);
+    ComputeDeviceAttribsHash(Hasher, m_pDevice);
+    Hasher.Update(ShaderCI, IsDebug);
     const XXH128Hash Hash = Hasher.Digest();
 
     // First, try to check if the shader has already been requested
@@ -765,7 +780,8 @@ bool RenderStateCacheImpl::CreatePipelineStateInternal(const CreateInfoType& PSO
     }
 
     XXH128State Hasher;
-    Hasher.Update(PSOCreateInfo, m_DeviceHash);
+    ComputeDeviceAttribsHash(Hasher, m_pDevice);
+    Hasher.Update(PSOCreateInfo);
     const auto Hash = Hasher.Digest();
 
     // First, try to check if the PSO has already been requested
