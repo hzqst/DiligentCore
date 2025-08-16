@@ -750,12 +750,12 @@ void ShaderResourcesGL::LoadUniforms(const LoadUniformsAttribs& Attribs)
         // glGetUniformBlockIndex( program, uniformBlockName );
         // is equivalent to
         // glGetProgramResourceIndex( program, GL_UNIFORM_BLOCK, uniformBlockName );
- 
+
         if (!strncmp(Name.data(), "SLANG_ParameterGroup", _countof("SLANG_ParameterGroup") - 1))
         {
             ExtractInstanceNameFromBlockName(Name);
         }
- 
+
         bool IsNewBlock = true;
 
         GLint ArraySize      = 1;
