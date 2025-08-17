@@ -704,34 +704,6 @@ void ShaderResourcesGL::LoadUniforms(const LoadUniformsAttribs& Attribs)
         }
     }
 
-    auto ExtractInstanceNameFromBlockName = [](std::vector<GLchar>& BlockName) -> void {
-        /*
-             Purpose: extract "InstanceName" from "SLANG_ParameterGroup_InstanceName_std140"
-        */
-
-        std::string blockNameStr(BlockName.data());
-
-        const std::string prefix = "SLANG_ParameterGroup_";
-        const std::string suffix = "_std140";
-
-        if (blockNameStr.length() <= prefix.length() + suffix.length() ||
-            blockNameStr.substr(0, prefix.length()) != prefix)
-        {
-            return;
-        }
-
-        size_t suffixPos = blockNameStr.rfind(suffix);
-        if (suffixPos == std::string::npos || suffixPos <= prefix.length())
-        {
-            return;
-        }
-
-        std::string instanceName = blockNameStr.substr(prefix.length(),
-                                                       suffixPos - prefix.length());
-
-        memcpy(BlockName.data(), instanceName.data(), std::min(instanceName.size() + 1, BlockName.size()));
-    };
-
     for (int i = 0; i < numActiveUniformBlocks; i++)
     {
         // In contrast to shader uniforms, every element in uniform block array is enumerated individually
@@ -746,15 +718,9 @@ void ShaderResourcesGL::LoadUniforms(const LoadUniformsAttribs& Attribs)
 
         GLuint UniformBlockIndex = glGetUniformBlockIndex(GLProgram, Name.data());
         DEV_CHECK_GL_ERROR("Unable to get active uniform block index\n");
-
         // glGetUniformBlockIndex( program, uniformBlockName );
         // is equivalent to
         // glGetProgramResourceIndex( program, GL_UNIFORM_BLOCK, uniformBlockName );
-
-        if (!strncmp(Name.data(), "SLANG_ParameterGroup", _countof("SLANG_ParameterGroup") - 1))
-        {
-            ExtractInstanceNameFromBlockName(Name);
-        }
 
         bool IsNewBlock = true;
 

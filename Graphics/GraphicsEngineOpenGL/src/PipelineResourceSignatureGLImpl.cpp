@@ -211,17 +211,7 @@ namespace
 
 inline void ApplyUBBindigs(GLuint glProg, const char* UBName, Uint32 BaseBinding, Uint32 ArraySize)
 {
-    GLuint UniformBlockIndex = glGetUniformBlockIndex(glProg, UBName);
-
-    if (UniformBlockIndex == GL_INVALID_INDEX)
-    {
-        std::string SlangBlockName = "SLANG_ParameterGroup_";
-        SlangBlockName += UBName;
-        SlangBlockName += "_std140";
-
-        UniformBlockIndex = glGetUniformBlockIndex(glProg, SlangBlockName.c_str());
-    }
-
+    const GLuint UniformBlockIndex = glGetUniformBlockIndex(glProg, UBName);
     VERIFY(UniformBlockIndex != GL_INVALID_INDEX,
            "Failed to find uniform buffer '", UBName,
            "', which is unexpected as it is present in the list of program resources.");
