@@ -259,16 +259,7 @@ const std::string& GetUBName(diligent_spirv_cross::Compiler&               Compi
     // use UB.name even if the instance name is present
 
     const std::string& instance_name = Compiler.get_name(UB.id);
-
-    //"SLANG_ParameterGroup" is for slang->spv
-    if (!strncmp(UB.name.c_str(), "SLANG_ParameterGroup", _countof("SLANG_ParameterGroup") - 1) && !instance_name.empty())
-        return instance_name;
-
-    //"block_SLANG_ParameterGroup" is for slang->glsl->spv
-    if (!strncmp(UB.name.c_str(), "block_SLANG_ParameterGroup", _countof("block_SLANG_ParameterGroup") - 1) && !instance_name.empty())
-        return instance_name;
-
-    return (IRSource.hlsl && !instance_name.empty()) ? instance_name : UB.name;
+    return ((IRSource.hlsl || IRSource.lang == spv::SourceLanguageSlang) && !instance_name.empty()) ? instance_name : UB.name;
 }
 
 static SHADER_CODE_BASIC_TYPE SpirvBaseTypeToShaderCodeBasicType(diligent_spirv_cross::SPIRType::BaseType SpvBaseType)
