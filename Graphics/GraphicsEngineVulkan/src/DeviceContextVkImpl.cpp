@@ -624,6 +624,32 @@ void DeviceContextVkImpl::SetBlendFactors(const float* pBlendFactors)
     }
 }
 
+void DeviceContextVkImpl::SetPushConstants(const void* pData,
+                                           Uint32      ByteSize,
+                                           Uint32      ByteOffset)
+{
+#ifdef DILIGENT_DEVELOPMENT
+    DEV_CHECK_ERR(pData != nullptr, "pData must not be null");
+    DEV_CHECK_ERR(ByteSize > 0, "ByteSize must be greater than 0");
+    DEV_CHECK_ERR((ByteOffset % 4) == 0, "ByteOffset must be a multiple of 4");
+    DEV_CHECK_ERR((ByteSize % 4) == 0, "ByteSize must be a multiple of 4");
+    DEV_CHECK_ERR(m_pPipelineState, "No pipeline state is bound");
+
+    const VkPhysicalDeviceLimits& Limits = m_pDevice->GetPhysicalDevice().GetProperties().limits;
+    DEV_CHECK_ERR(ByteOffset + ByteSize <= Limits.maxPushConstantsSize,
+                  "Push constants size (", ByteOffset + ByteSize, " bytes) exceeds device limit (",
+                  Limits.maxPushConstantsSize, " bytes)");
+#endif
+
+    EnsureVkCmdBuffer();
+
+    VkShaderStageFlags vkStages         = ShaderTypesToVkShaderStageFlags(m_pPipelineState->GetActiveShaderStages());
+    VkPipelineLayout   vkPipelineLayout = m_pPipelineState->GetPipelineLayout().GetVkPipelineLayout();
+
+    vkCmdPushConstants(m_CommandBuffer.GetVkCmdBuffer(), vkPipelineLayout, vkStages, ByteOffset, ByteSize, pData);
+    ++m_State.NumCommands;
+}
+
 void DeviceContextVkImpl::CommitVkVertexBuffers()
 {
 #ifdef DILIGENT_DEVELOPMENT

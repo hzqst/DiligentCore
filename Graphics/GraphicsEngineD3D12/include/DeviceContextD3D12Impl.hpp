@@ -87,6 +87,11 @@ public:
     /// Implementation of IDeviceContext::SetBlendFactors() in Direct3D12 backend.
     virtual void DILIGENT_CALL_TYPE SetBlendFactors(const float* pBlendFactors = nullptr) override final;
 
+    /// Implementation of IDeviceContext::SetPushConstants() in Direct3D12 backend.
+    virtual void DILIGENT_CALL_TYPE SetPushConstants(const void* pData,
+                                                     Uint32      ByteSize,
+                                                     Uint32      ByteOffset = 0) override final;
+
     /// Implementation of IDeviceContext::SetVertexBuffers() in Direct3D12 backend.
     virtual void DILIGENT_CALL_TYPE SetVertexBuffers(Uint32                         StartSlot,
                                                      Uint32                         NumBuffersSet,

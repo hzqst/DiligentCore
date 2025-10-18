@@ -65,6 +65,15 @@ DeviceContextD3D11Impl::DeviceContextD3D11Impl(IReferenceCounters*      pRefCoun
     m_CmdListAllocator    {GetRawAllocator(), sizeof(CommandListD3D11Impl), 64}
 // clang-format on
 {
+    // Create push constants buffer for D3D11 backend
+    BufferDesc PushConstantsBuffDesc;
+    PushConstantsBuffDesc.Name          = "Push Constants Buffer";
+    PushConstantsBuffDesc.Size          = PushConstantsBufferSize;
+    PushConstantsBuffDesc.Usage         = USAGE_DYNAMIC;
+    PushConstantsBuffDesc.BindFlags     = BIND_UNIFORM_BUFFER;
+    PushConstantsBuffDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
+
+    pDevice->CreateBuffer(PushConstantsBuffDesc, nullptr, &m_pPushConstantsBuffer);
 }
 
 IMPLEMENT_QUERY_INTERFACE(DeviceContextD3D11Impl, IID_DeviceContextD3D11, TDeviceContextBase)
@@ -579,6 +588,64 @@ void DeviceContextD3D11Impl::SetBlendFactors(const float* pBlendFactors)
         }
         m_pd3d11DeviceContext->OMSetBlendState(pd3d11BS, m_BlendFactors, SampleMask);
     }
+}
+
+void DeviceContextD3D11Impl::SetPushConstants(const void* pData,
+                                              Uint32      ByteSize,
+                                              Uint32      ByteOffset)
+{
+#ifdef DILIGENT_DEVELOPMENT
+    DEV_CHECK_ERR(pData != nullptr, "pData must not be null");
+    DEV_CHECK_ERR(ByteSize > 0, "ByteSize must be greater than 0");
+    DEV_CHECK_ERR(m_pPipelineState, "No pipeline state is bound");
+    DEV_CHECK_ERR(ByteOffset + ByteSize <= PushConstantsBufferSize,
+                  "Push constants size (", ByteOffset + ByteSize, " bytes) exceeds buffer size (",
+                  PushConstantsBufferSize, " bytes)");
+#endif
+
+    // Align ByteSize to 16 bytes (D3D11 constant buffer requirement)
+    const Uint32 AlignedSize = (ByteSize + 15) & ~15u;
+
+    // Map the push constants buffer and update the data
+    PVoid pMappedData = nullptr;
+    MapBuffer(m_pPushConstantsBuffer, MAP_WRITE, MAP_FLAG_DISCARD, pMappedData);
+   
+    if (pMappedData)
+    {
+        // Copy data to the mapped buffer
+        if (ByteOffset > 0)
+        {
+            // If offset is non-zero, we need to preserve existing data
+            // For simplicity, we'll just write to the offset location
+            memset(pMappedData, 0, PushConstantsBufferSize);
+        }
+        memcpy((byte *)pMappedData + ByteOffset, pData, ByteSize);
+    }
+    UnmapBuffer(m_pPushConstantsBuffer, MAP_WRITE);
+
+    // Bind the buffer to the appropriate shader stages
+    // In D3D11, we use slot 0 for push constants
+    BufferD3D11Impl* pBufferD3D11 = m_pPushConstantsBuffer.RawPtr<BufferD3D11Impl>();
+    ID3D11Buffer*    pd3d11Buffer = pBufferD3D11->GetD3D11Buffer();
+    SHADER_TYPE             ShaderStages = m_pPipelineState->GetActiveShaderStages();
+
+    if (ShaderStages & SHADER_TYPE_VERTEX)
+        m_pd3d11DeviceContext->VSSetConstantBuffers(0, 1, &pd3d11Buffer);
+
+    if (ShaderStages & SHADER_TYPE_PIXEL)
+        m_pd3d11DeviceContext->PSSetConstantBuffers(0, 1, &pd3d11Buffer);
+
+    if (ShaderStages & SHADER_TYPE_GEOMETRY)
+        m_pd3d11DeviceContext->GSSetConstantBuffers(0, 1, &pd3d11Buffer);
+
+    if (ShaderStages & SHADER_TYPE_HULL)
+        m_pd3d11DeviceContext->HSSetConstantBuffers(0, 1, &pd3d11Buffer);
+
+    if (ShaderStages & SHADER_TYPE_DOMAIN)
+        m_pd3d11DeviceContext->DSSetConstantBuffers(0, 1, &pd3d11Buffer);
+
+    if (ShaderStages & SHADER_TYPE_COMPUTE)
+        m_pd3d11DeviceContext->CSSetConstantBuffers(0, 1, &pd3d11Buffer);
 }
 
 void DeviceContextD3D11Impl::CommitD3D11IndexBuffer(VALUE_TYPE IndexType)

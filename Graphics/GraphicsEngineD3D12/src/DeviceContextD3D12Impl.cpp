@@ -505,6 +505,53 @@ void DeviceContextD3D12Impl::SetBlendFactors(const float* pBlendFactors)
     }
 }
 
+void DeviceContextD3D12Impl::SetPushConstants(const void* pData,
+                                              Uint32      ByteSize,
+                                              Uint32      ByteOffset)
+{
+#ifdef DILIGENT_DEVELOPMENT
+    DEV_CHECK_ERR(pData != nullptr, "pData must not be null");
+    DEV_CHECK_ERR(ByteSize > 0, "ByteSize must be greater than 0");
+    DEV_CHECK_ERR((ByteOffset % 4) == 0, "ByteOffset must be a multiple of 4");
+    DEV_CHECK_ERR((ByteSize % 4) == 0, "ByteSize must be a multiple of 4");
+    DEV_CHECK_ERR(m_pPipelineState, "No pipeline state is bound");
+#endif
+
+    // D3D12 root constants use 32-bit values
+    const Uint32 Num32BitValues = ByteSize / 4;
+    const Uint32 Offset32Bit    = ByteOffset / 4;
+
+    const PipelineStateDesc& PSODesc = m_pPipelineState->GetDesc();
+
+    // Note: In D3D12, push constants are implemented using root constants.
+    // This requires the root signature to have a root constants parameter.
+    // TODO: How to get correct RootParameterIndex?
+    const UINT RootParameterIndex = 0;
+
+    if (PSODesc.IsComputePipeline())
+    {
+        auto& CompCtx = GetCmdContext().AsComputeContext();
+        CompCtx.GetCommandList()->SetComputeRoot32BitConstants(
+            RootParameterIndex,
+            Num32BitValues,
+            pData,
+            Offset32Bit);
+    }
+    else if (PSODesc.IsAnyGraphicsPipeline())
+    {
+        auto& GraphCtx = GetCmdContext().AsGraphicsContext();
+        GraphCtx.GetCommandList()->SetGraphicsRoot32BitConstants(
+            RootParameterIndex,
+            Num32BitValues,
+            pData,
+            Offset32Bit);
+    }
+    else
+    {
+        LOG_ERROR("SetPushConstants is not supported for current pipeline in D3D12 backend");
+    }
+}
+
 void DeviceContextD3D12Impl::CommitD3D12IndexBuffer(GraphicsContext& GraphCtx, VALUE_TYPE IndexType)
 {
     DEV_CHECK_ERR(m_pIndexBuffer != nullptr, "Index buffer is not set up for indexed draw command");

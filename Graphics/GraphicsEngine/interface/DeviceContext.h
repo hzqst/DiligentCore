@@ -2628,6 +2628,30 @@ DILIGENT_BEGIN_INTERFACE(IDeviceContext, IObject)
                                          const float* pBlendFactors DEFAULT_VALUE(nullptr)) PURE;
 
 
+    /// Sets push constants for the currently bound pipeline state.
+
+    /// \param [in] pData        - Pointer to the push constants data.
+    /// \param [in] ByteSize     - Size of the data in bytes.
+    ///                            - In D3D12 backend, must be a multiple of 4.
+    ///                            - In D3D11 backend, will be padded to 16-byte alignment.
+    ///                            - In Vulkan backend, must not exceed VkPhysicalDeviceLimits::maxPushConstantsSize (typically 128 or 256 bytes).
+    /// \param [in] ByteOffset   - Offset in bytes from the start of the push constants block.
+    ///                            Must be a multiple of 4.
+    ///
+    /// Push constants provide a high-performance way to pass a small amount of constant data to shaders.
+    /// Unlike uniform/constant buffers, push constants are stored directly in the command buffer.
+    ///
+    /// \note A pipeline state must be bound before calling this method.
+    ///
+    /// \note In D3D11 backend, this is emulated using a dedicated constant buffer at slot 0.
+    ///
+    /// \remarks Supported contexts: graphics, compute.
+    VIRTUAL void METHOD(SetPushConstants)(THIS_
+                                          const void*  pData,
+                                          Uint32       ByteSize,
+                                          Uint32       ByteOffset DEFAULT_VALUE(0)) PURE;
+
+
     /// Binds vertex buffers to the pipeline.
 
     /// \param [in] StartSlot           - The first input slot for binding. The first vertex buffer is
