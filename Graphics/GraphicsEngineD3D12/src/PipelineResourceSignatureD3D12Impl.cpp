@@ -322,11 +322,11 @@ void PipelineResourceSignatureD3D12Impl::AllocateRootParameters(const bool IsSer
                 case SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS:
                     // Push constants use D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS
                     // ArraySize is in bytes, but D3D12 needs number of 32-bit values
-                    VERIFY_EXPR((ResDesc.ArraySize % 4) == 0);
+                    VERIFY_EXPR(ResDesc.ArraySize > 0);
                     d3d12RootParamType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
                     
                     // Allocate root parameter for push constants
-                    // Pass ResDesc.ArraySize / 4 as the number of 32-bit values
+                    // Pass ResDesc.ArraySize as the number of 32-bit values
                     ParamsBuilder.AllocateResourceSlot(ResDesc.ShaderStages, ResDesc.VarType, d3d12RootParamType,
                                                        D3D12_DESCRIPTOR_RANGE_TYPE_CBV, ResDesc.ArraySize, 0, 0,
                                                        SRBRootIndex, SRBOffsetFromTableStart);

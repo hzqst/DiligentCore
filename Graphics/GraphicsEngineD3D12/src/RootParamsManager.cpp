@@ -408,7 +408,7 @@ void RootParamsBuilder::AllocateResourceSlot(SHADER_TYPE                   Shade
         D3D12_ROOT_PARAMETER d3d12RootParam{RootParameterType, {}, ShaderVisibility};
         d3d12RootParam.Constants.ShaderRegister = Register;
         d3d12RootParam.Constants.RegisterSpace  = Space;
-        d3d12RootParam.Constants.Num32BitValues = ArraySize / 4; // ArraySize/4 is number of 32-bit values
+        d3d12RootParam.Constants.Num32BitValues = ArraySize; // ArraySize is number of 32-bit values
         
         m_RootViews.emplace_back(RootIndex, ParameterGroup, d3d12RootParam);
     }
