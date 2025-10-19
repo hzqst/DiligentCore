@@ -41,4 +41,11 @@ ShaderResourceBindingWebGPUImpl::ShaderResourceBindingWebGPUImpl(IReferenceCount
 
 ShaderResourceBindingWebGPUImpl::~ShaderResourceBindingWebGPUImpl() = default;
 
+void ShaderResourceBindingWebGPUImpl::SetPushConstants(const void* pData,
+                                                       Uint32      ByteSize,
+                                                       Uint32      ByteOffset)
+{
+    LOG_ERROR_MESSAGE("SetPushConstants not implemented yet");
+}
+
 } // namespace Diligent

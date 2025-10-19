@@ -121,7 +121,7 @@ D3DShaderResourceCounters ShaderVariableManagerD3D11::CountResources(
         [&](Uint32 Index) //
         {
             const PipelineResourceDesc& ResDesc = Signature.GetResourceDesc(Index);
-            static_assert(SHADER_RESOURCE_TYPE_LAST == 8, "Please update the switch below to handle the new shader resource range");
+            static_assert(SHADER_RESOURCE_TYPE_LAST == 9, "Please update the switch below to handle the new shader resource range");
             switch (ResDesc.ResourceType)
             {
                     // clang-format off
@@ -215,7 +215,7 @@ void ShaderVariableManagerD3D11::Initialize(const PipelineResourceSignatureD3D11
         [&](Uint32 Index) //
         {
             const PipelineResourceDesc& ResDesc = Signature.GetResourceDesc(Index);
-            static_assert(SHADER_RESOURCE_TYPE_LAST == 8, "Please update the switch below to handle the new shader resource range");
+            static_assert(SHADER_RESOURCE_TYPE_LAST == 9, "Please update the switch below to handle the new shader resource range");
             switch (ResDesc.ResourceType)
             {
                 case SHADER_RESOURCE_TYPE_CONSTANT_BUFFER:

@@ -45,6 +45,13 @@ ShaderResourceBindingGLImpl::~ShaderResourceBindingGLImpl()
 {
 }
 
+void ShaderResourceBindingGLImpl::SetPushConstants(const void* pData,
+                                                   Uint32      ByteSize,
+                                                   Uint32      ByteOffset)
+{
+    LOG_ERROR_MESSAGE("SetPushConstants not implemented yet");
+}
+
 IMPLEMENT_QUERY_INTERFACE(ShaderResourceBindingGLImpl, IID_ShaderResourceBindingGL, TBase)
 
 } // namespace Diligent

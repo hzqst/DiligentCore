@@ -156,14 +156,28 @@ RootSignatureD3D12::RootSignatureD3D12(IReferenceCounters*                      
             const Uint32                RootIndex     = SignInfo.BaseRootIndex + RootView.RootIndex;
             VERIFY((d3d12SrcParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_CBV ||
                     d3d12SrcParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_SRV ||
-                    d3d12SrcParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_UAV),
-                   "Root CBV, SRV or UAV is expected");
+                    d3d12SrcParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_UAV ||
+                    d3d12SrcParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS),
+                   "Root CBV, SRV, UAV or 32BIT_CONSTANTS is expected");
 
-            MaxSpaceUsed = std::max(MaxSpaceUsed, d3d12SrcParam.Descriptor.RegisterSpace);
+            if (d3d12SrcParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS)
+            {
+                // Push constants use Constants member, not Descriptor
+                MaxSpaceUsed = std::max(MaxSpaceUsed, d3d12SrcParam.Constants.RegisterSpace);
 
-            d3d12Parameters[RootIndex] = d3d12SrcParam;
-            // Offset register space value by the base register space of the current resource signature.
-            d3d12Parameters[RootIndex].Descriptor.RegisterSpace += BaseRegisterSpace;
+                d3d12Parameters[RootIndex] = d3d12SrcParam;
+                // Offset register space value by the base register space of the current resource signature.
+                d3d12Parameters[RootIndex].Constants.RegisterSpace += BaseRegisterSpace;
+            }
+            else
+            {
+                // CBV, SRV, UAV use Descriptor member
+                MaxSpaceUsed = std::max(MaxSpaceUsed, d3d12SrcParam.Descriptor.RegisterSpace);
+
+                d3d12Parameters[RootIndex] = d3d12SrcParam;
+                // Offset register space value by the base register space of the current resource signature.
+                d3d12Parameters[RootIndex].Descriptor.RegisterSpace += BaseRegisterSpace;
+            }
         }
 
         for (Uint32 samp = 0, SampCount = pSignature->GetImmutableSamplerCount(); samp < SampCount; ++samp)

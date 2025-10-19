@@ -48,6 +48,11 @@ public:
     ~ShaderResourceBindingWebGPUImpl() override;
 
     IMPLEMENT_QUERY_INTERFACE_IN_PLACE(IID_ShaderResourceBindingWebGPU, TShaderResourceBindingBase)
+
+    // IShaderResourceBinding methods
+    virtual void DILIGENT_CALL_TYPE SetPushConstants(const void* pData,
+                                                     Uint32      ByteSize,
+                                                     Uint32      ByteOffset) override final;
 };
 
 } // namespace Diligent

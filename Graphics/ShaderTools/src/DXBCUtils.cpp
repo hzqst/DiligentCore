@@ -939,7 +939,7 @@ void RemapShaderResources(const DXBCUtils::TResourceBindingMap& ResourceMap, con
                     Iter->second.ArraySize >= Res.BindCount);
 
 #ifdef DILIGENT_DEBUG
-        static_assert(SHADER_RESOURCE_TYPE_LAST == 8, "Please update the switch below to handle the new shader resource type");
+        static_assert(SHADER_RESOURCE_TYPE_LAST == 9, "Please update the switch below to handle the new shader resource type");
         switch (Iter->second.ResType)
         {
                 // clang-format off

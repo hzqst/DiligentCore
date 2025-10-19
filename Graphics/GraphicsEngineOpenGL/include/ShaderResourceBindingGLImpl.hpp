@@ -54,6 +54,11 @@ public:
     ~ShaderResourceBindingGLImpl();
 
     virtual void DILIGENT_CALL_TYPE QueryInterface(const INTERFACE_ID& IID, IObject** ppInterface) override final;
+
+    // IShaderResourceBinding methods
+    virtual void DILIGENT_CALL_TYPE SetPushConstants(const void* pData,
+                                                     Uint32      ByteSize,
+                                                     Uint32      ByteOffset) override final;
 };
 
 } // namespace Diligent

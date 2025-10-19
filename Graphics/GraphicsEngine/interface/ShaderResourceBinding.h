@@ -154,6 +154,28 @@ DILIGENT_BEGIN_INTERFACE(IShaderResourceBinding, IObject)
 
     /// Returns true if static resources have been initialized in this SRB.
     VIRTUAL Bool METHOD(StaticResourcesInitialized)(THIS) CONST PURE;
+
+    /// Sets push constants for the currently bound pipeline state.
+
+    /// \param [in] pData        - Pointer to the push constants data.
+    /// \param [in] ByteSize     - Size of the data in bytes.
+    ///                            - In D3D12 backend, must be a multiple of 4.
+    ///                            - In D3D11 backend, will be padded to 16-byte alignment.
+    ///                            - In Vulkan backend, must not exceed VkPhysicalDeviceLimits::maxPushConstantsSize (typically 128 or 256 bytes).
+    /// \param [in] ByteOffset   - Offset in bytes from the start of the push constants block.
+    ///                            Must be a multiple of 4.
+    ///
+    /// Push constants provide a high-performance way to pass a small amount of constant data to shaders.
+    /// D3D12: SetGraphicsRoot32BitConstants/SetComputeRoot32BitConstants under the hood, Vulkan: vkCmdPushConstants
+    /// Unlike uniform/constant buffers, push constants are stored directly in the command buffer.
+    ///
+    /// \note In D3D11 and OpenGL backend, this is emulated using a uploading data to constant buffer.
+    ///
+    /// \remarks Supported contexts: graphics, compute.
+    VIRTUAL void METHOD(SetPushConstants)(THIS_
+        const void*  pData,
+        Uint32       ByteSize,
+        Uint32       ByteOffset DEFAULT_VALUE(0)) PURE;
 };
 DILIGENT_END_INTERFACE
 

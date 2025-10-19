@@ -403,6 +403,18 @@ void DeviceContextD3D12Impl::CommitRootTablesAndViews(RootTableInfo& RootInfo, U
             pSignature->CommitRootTables(CommitAttribs);
         }
 
+        // Commit push constants if the signature has them
+        if (pSignature->HasPushConstants())
+        {
+            RefCntAutoPtr<ShaderResourceBindingD3D12Impl> pSRB = RootInfo.SRBs[sign].Lock();
+            if (pSRB)
+            {
+                pSignature->CommitPushConstants(CommitAttribs,
+                                                pSRB->GetPushConstantsData(),
+                                                pSRB->GetPushConstantsDataSize());
+            }
+        }
+
         // Always commit root views. If the root view is up-to-date (e.g. it is not stale and is intact),
         // the bit should not be set in CommitSRBMask.
         if (Uint64 DynamicRootBuffersMask = pResourceCache->GetDynamicRootBuffersMask())

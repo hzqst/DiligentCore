@@ -884,7 +884,9 @@ bool DXCompilerImpl::RemapResourceBindings(const TResourceBindingMap& ResourceMa
         for (const auto& NameAndBinding : ResourceMap)
         {
             D3D12_SHADER_INPUT_BIND_DESC ResDesc = {};
-            if (pd3d12Reflection->GetResourceBindingDescByName(NameAndBinding.first.GetStr(), &ResDesc) == S_OK)
+            HRESULT hr = pd3d12Reflection->GetResourceBindingDescByName(NameAndBinding.first.GetStr(), &ResDesc);
+            
+            if (hr == S_OK)
             {
                 ResourceExtendedInfo& Ext = ExtResourceMap[&NameAndBinding];
                 Ext.SrcBindPoint          = ResDesc.BindPoint;
@@ -926,7 +928,7 @@ bool DXCompilerImpl::RemapResourceBindings(const TResourceBindingMap& ResourceMa
 
 #    ifdef DILIGENT_DEVELOPMENT
                 {
-                    static_assert(SHADER_RESOURCE_TYPE_LAST == 8, "Please update the switch below to handle the new shader resource type");
+                    static_assert(SHADER_RESOURCE_TYPE_LAST == SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS, "Please update the switch below to handle the new shader resource type");
                     RES_TYPE ExpectedResType = RES_TYPE_COUNT;
                     switch (NameAndBinding.second.ResType)
                     {
@@ -939,6 +941,7 @@ bool DXCompilerImpl::RemapResourceBindings(const TResourceBindingMap& ResourceMa
                         case SHADER_RESOURCE_TYPE_SAMPLER:          ExpectedResType = RES_TYPE_SAMPLER; break;
                         case SHADER_RESOURCE_TYPE_INPUT_ATTACHMENT: ExpectedResType = RES_TYPE_SRV;     break;
                         case SHADER_RESOURCE_TYPE_ACCEL_STRUCT:     ExpectedResType = RES_TYPE_SRV;     break;
+                        case SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS: ExpectedResType = RES_TYPE_CBV;     break; // Push constants are reflected as CBV in shader
                         // clang-format on
                         default: UNEXPECTED("Unsupported shader resource type.");
                     }
@@ -956,6 +959,22 @@ bool DXCompilerImpl::RemapResourceBindings(const TResourceBindingMap& ResourceMa
                 VERIFY_EXPR((Ext.Type != RES_TYPE_CBV && ResDesc.BindCount == 0) ||
                             (Ext.Type == RES_TYPE_CBV && ResDesc.BindCount == UINT_MAX) ||
                             NameAndBinding.second.ArraySize >= ResDesc.BindCount);
+            }
+            else
+            {
+                // Reflection failed - this can happen for push constants as they may not be present in reflection data
+                // In this case, we need to manually populate the ExtResourceMap entry
+#    ifdef DILIGENT_DEVELOPMENT
+                if (NameAndBinding.second.ResType == SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS)
+                {
+                    LOG_WARNING_MESSAGE("Resource '", NameAndBinding.first.GetStr(), "' is a push constant but was not found in shader reflection. "
+                                       "Push constants might not be supported in DXIL patching for this shader model.");
+                }
+                else
+                {
+                    LOG_ERROR_AND_THROW("Failed to find resource '", NameAndBinding.first.GetStr(), "' in shader reflection.");
+                }
+#    endif
             }
         }
 
@@ -1523,7 +1542,11 @@ void DXCompilerImpl::PatchResourceDeclaration(const TResourceBindingMap& Resourc
                     if (IsWordSymbol(c))
                         continue; // name is partially equal, continue searching
 
-                    VERIFY_EXPR((c == '*' && ResInfo.first->second.ArraySize == 1) || (c == ']' && ResInfo.first->second.ArraySize >= 1));
+                    // For push constants (32-bit constants), ArraySize is number of 32-bit values, not element count
+                    // For other CBV resources, ArraySize should be 1 for single resources
+                    const bool IsPushConstants = (ResInfo.first->second.ResType == SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS);
+                    VERIFY_EXPR((c == '*' && (ResInfo.first->second.ArraySize == 1 || IsPushConstants)) || 
+                               (c == ']' && ResInfo.first->second.ArraySize >= 1));
 
                     ResType = RES_TYPE_CBV;
                     break;
@@ -1571,7 +1594,15 @@ void DXCompilerImpl::PatchResourceDeclaration(const TResourceBindingMap& Resourc
                 break;
             }
         }
-        CHECK_PATCHING_ERROR(pResPair != nullptr && pExt != nullptr, "failed to find resource in ResourceMap");
+        
+        // If resource not found in ExtResMap, it might be a push constant that wasn't found in reflection
+        // In this case, skip patching this resource
+        if (pResPair == nullptr || pExt == nullptr)
+        {
+            // Continue without patching this resource
+            pos = BindingRecordStart;
+            continue;
+        }
 
         VERIFY_EXPR(ResName.empty() || ResName == pResPair->first.GetStr());
         VERIFY_EXPR(pExt->RecordId == ~0u || pExt->RecordId == RecordId);

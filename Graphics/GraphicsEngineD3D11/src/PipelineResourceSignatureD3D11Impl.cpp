@@ -90,7 +90,7 @@ PipelineResourceSignatureD3D11Impl::PipelineResourceSignatureD3D11Impl(IReferenc
 
 D3D11_RESOURCE_RANGE PipelineResourceSignatureD3D11Impl::ShaderResourceTypeToRange(SHADER_RESOURCE_TYPE Type)
 {
-    static_assert(SHADER_RESOURCE_TYPE_LAST == 8, "Please update the switch below to handle the new shader resource type");
+    static_assert(SHADER_RESOURCE_TYPE_LAST == 9, "Please update the switch below to handle the new shader resource type");
     switch (Type)
     {
         // clang-format off

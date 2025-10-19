@@ -55,7 +55,7 @@ const char* GetBindingRangeName(BINDING_RANGE Range)
 
 BINDING_RANGE PipelineResourceToBindingRange(const PipelineResourceDesc& Desc)
 {
-    static_assert(SHADER_RESOURCE_TYPE_LAST == 8, "Please update the switch below to handle the new shader resource type");
+    static_assert(SHADER_RESOURCE_TYPE_LAST == 9, "Please update the switch below to handle the new shader resource type");
     switch (Desc.ResourceType)
     {
         // clang-format off

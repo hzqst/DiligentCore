@@ -396,6 +396,22 @@ void RootParamsBuilder::AllocateResourceSlot(SHADER_TYPE                   Shade
         DbgValidateD3D12RootTable(d3d12RootParam.DescriptorTable);
 #endif
     }
+    else if (RootParameterType == D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS)
+    {
+        // Push constants: ArraySize is the number of 32-bit values
+        VERIFY(ArraySize > 0, "Push constants must have at least one 32-bit value");
+        
+        // Allocate push constants as a root parameter
+        OffsetFromTableStart = 0;
+        
+        // Add new root constants parameter
+        D3D12_ROOT_PARAMETER d3d12RootParam{RootParameterType, {}, ShaderVisibility};
+        d3d12RootParam.Constants.ShaderRegister = Register;
+        d3d12RootParam.Constants.RegisterSpace  = Space;
+        d3d12RootParam.Constants.Num32BitValues = ArraySize / 4; // ArraySize/4 is number of 32-bit values
+        
+        m_RootViews.emplace_back(RootIndex, ParameterGroup, d3d12RootParam);
+    }
     else
     {
         UNSUPPORTED("Unsupported root parameter type");
@@ -480,8 +496,9 @@ void RootParamsBuilder::InitializeMgr(IMemoryAllocator& MemAllocator, RootParams
         const D3D12_ROOT_PARAMETER& d3d12RootParam = SrcView.d3d12RootParam;
         VERIFY((d3d12RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_CBV ||
                 d3d12RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_SRV ||
-                d3d12RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_UAV),
-               "Unexpected parameter type: SBV, SRV or UAV is expected");
+                d3d12RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_UAV ||
+                d3d12RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS),
+               "Unexpected parameter type: CBV, SRV, UAV or 32BIT_CONSTANTS is expected");
         new (pRootViews + rv) RootParameter{SrcView.RootIndex, SrcView.Group, d3d12RootParam};
     }
     ParamsMgr.m_pRootTables = NumRootTables != 0 ? pRootTables : nullptr;

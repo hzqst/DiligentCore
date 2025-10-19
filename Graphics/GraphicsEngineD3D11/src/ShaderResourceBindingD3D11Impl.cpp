@@ -45,6 +45,13 @@ ShaderResourceBindingD3D11Impl::~ShaderResourceBindingD3D11Impl()
 {
 }
 
+void ShaderResourceBindingD3D11Impl::SetPushConstants(const void* pData,
+                                                      Uint32      ByteSize,
+                                                      Uint32      ByteOffset)
+{
+    LOG_ERROR_MESSAGE("SetPushConstants not implemented yet");
+}
+
 IMPLEMENT_QUERY_INTERFACE(ShaderResourceBindingD3D11Impl, IID_ShaderResourceBindingD3D11, TBase)
 
 } // namespace Diligent

@@ -39,10 +39,64 @@ ShaderResourceBindingD3D12Impl::ShaderResourceBindingD3D12Impl(IReferenceCounter
                                                                PipelineResourceSignatureD3D12Impl* pPRS) :
     TBase{pRefCounters, pPRS}
 {
+    // Pre-allocate push constants buffer if the signature has push constants
+    if (pPRS->HasPushConstants())
+    {
+        m_PushConstantsData.resize(pPRS->GetPushConstantsSize());
+    }
 }
 
 ShaderResourceBindingD3D12Impl::~ShaderResourceBindingD3D12Impl()
 {
+}
+
+void ShaderResourceBindingD3D12Impl::SetPushConstants(const void* pData,
+                                                      Uint32      ByteSize,
+                                                      Uint32      ByteOffset)
+{
+    auto* pSignature = GetSignature();
+    if (!pSignature->HasPushConstants())
+    {
+        LOG_ERROR_MESSAGE("Pipeline resource signature '", pSignature->GetDesc().Name,
+                          "' does not have push constants defined. SetPushConstants() call is ignored.");
+        return;
+    }
+
+    if (pData == nullptr)
+    {
+        LOG_ERROR_MESSAGE("pData must not be null");
+        return;
+    }
+
+    if (ByteSize == 0)
+    {
+        LOG_ERROR_MESSAGE("ByteSize must not be zero");
+        return;
+    }
+
+    // Validate alignment
+    if ((ByteSize % 4) != 0)
+    {
+        LOG_ERROR_MESSAGE("ByteSize (", ByteSize, ") must be a multiple of 4 bytes (DWORD)");
+        return;
+    }
+
+    if ((ByteOffset % 4) != 0)
+    {
+        LOG_ERROR_MESSAGE("ByteOffset (", ByteOffset, ") must be a multiple of 4 bytes (DWORD)");
+        return;
+    }
+
+    const Uint32 PushConstantsSize = pSignature->GetPushConstantsSize();
+    if (ByteOffset + ByteSize > PushConstantsSize)
+    {
+        LOG_ERROR_MESSAGE("ByteOffset (", ByteOffset, ") + ByteSize (", ByteSize,
+                          ") exceeds push constants size (", PushConstantsSize, ")");
+        return;
+    }
+
+    // Copy data to internal cache
+    std::memcpy(m_PushConstantsData.data() + ByteOffset, pData, ByteSize);
 }
 
 } // namespace Diligent

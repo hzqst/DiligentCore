@@ -570,7 +570,7 @@ void BindResourceHelper::operator()(const BindResourceInfo& BindInfo) const
     VERIFY_EXPR(m_ArrayIndex == BindInfo.ArrayIndex);
     if (BindInfo.pObject != nullptr)
     {
-        static_assert(SHADER_RESOURCE_TYPE_LAST == 8, "Please update this function to handle the new resource type");
+        static_assert(SHADER_RESOURCE_TYPE_LAST == SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS, "Please update this function to handle the new resource type");
         switch (m_ResDesc.ResourceType)
         {
             case SHADER_RESOURCE_TYPE_CONSTANT_BUFFER:
@@ -600,6 +600,11 @@ void BindResourceHelper::operator()(const BindResourceInfo& BindInfo) const
 
             case SHADER_RESOURCE_TYPE_ACCEL_STRUCT:
                 CacheAccelStruct(BindInfo);
+                break;
+
+            case SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS:
+                // Push constants are not bound through shader variables
+                LOG_ERROR_MESSAGE("Push constants (SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS) cannot be bound through shader variables. Use IShaderResourceBinding::SetPushConstants() instead.");
                 break;
 
             default: UNEXPECTED("Unknown resource type ", static_cast<Int32>(m_ResDesc.ResourceType));
@@ -643,8 +648,18 @@ void BindResourceHelper::operator()(const BindResourceInfo& BindInfo) const
 
 void ShaderVariableManagerD3D12::BindResource(Uint32 ResIndex, const BindResourceInfo& BindInfo)
 {
-    VERIFY(m_pSignature->IsUsingSeparateSamplers() || GetResourceDesc(ResIndex).ResourceType != SHADER_RESOURCE_TYPE_SAMPLER,
+    const PipelineResourceDesc& ResDesc = GetResourceDesc(ResIndex);
+    
+    VERIFY(m_pSignature->IsUsingSeparateSamplers() || ResDesc.ResourceType != SHADER_RESOURCE_TYPE_SAMPLER,
            "Samplers should not be set directly when using combined texture samplers");
+    
+    // Push constants cannot be bound through shader variables
+    if (ResDesc.ResourceType == SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS)
+    {
+        LOG_ERROR_MESSAGE("Push constants (SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS) cannot be bound through shader variables. Use IShaderResourceBinding::SetPushConstants() instead.");
+        return;
+    }
+    
     BindResourceHelper BindResHelper{*m_pSignature, m_ResourceCache, ResIndex, BindInfo.ArrayIndex, BindInfo.Flags};
     BindResHelper(BindInfo);
 }

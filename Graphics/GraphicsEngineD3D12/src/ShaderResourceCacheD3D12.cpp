@@ -61,13 +61,24 @@ ShaderResourceCacheD3D12::MemoryRequirements ShaderResourceCacheD3D12::GetMemory
             }
         }
     }
+    
     // Root views' resources are stored in one-descriptor tables
-    MemReqs.TotalResources += NumRootViews;
+    // Note: Push constants (32-bit constants) don't need resource cache entries
+    Uint32 NumRootViewsNeedingCache = 0;
+    for (Uint32 i = 0; i < NumRootViews; ++i)
+    {
+        const RootParameter& RootView = RootParams.GetRootView(i);
+        if (RootView.d3d12RootParam.ParameterType != D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS)
+        {
+            ++NumRootViewsNeedingCache;
+        }
+    }
+    MemReqs.TotalResources += NumRootViewsNeedingCache;
 
     static_assert(sizeof(RootTable) % sizeof(void*) == 0, "sizeof(RootTable) is not aligned by the sizeof(void*)");
     static_assert(sizeof(Resource) % sizeof(void*) == 0, "sizeof(Resource) is not aligned by the sizeof(void*)");
 
-    MemReqs.NumTables = NumRootTables + NumRootViews;
+    MemReqs.NumTables = NumRootTables + NumRootViewsNeedingCache;
 
     MemReqs.TotalSize = (MemReqs.NumTables * sizeof(RootTable) +
                          MemReqs.TotalResources * sizeof(Resource) +
@@ -203,6 +214,11 @@ void ShaderResourceCacheD3D12::Initialize(IMemoryAllocator&        MemAllocator,
     for (Uint32 i = 0; i < RootParams.GetNumRootViews(); ++i)
     {
         const RootParameter& RootView = RootParams.GetRootView(i);
+        
+        // Skip push constants - they don't need resource cache entries
+        if (RootView.d3d12RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS)
+            continue;
+        
         VERIFY(!RootTableInitFlags[RootView.RootIndex], "Root table at index ", RootView.RootIndex, " has already been initialized.");
         VERIFY_EXPR(RootView.TableOffsetInGroupAllocation == RootParameter::InvalidTableOffsetInGroupAllocation);
         VERIFY_EXPR((RootView.d3d12RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_CBV ||
@@ -485,7 +501,7 @@ void ShaderResourceCacheD3D12::DbgValidateDynamicBuffersMask() const
 
 void ShaderResourceCacheD3D12::Resource::TransitionResource(CommandContext& Ctx)
 {
-    static_assert(SHADER_RESOURCE_TYPE_LAST == 8, "Please update this function to handle the new resource type");
+    static_assert(SHADER_RESOURCE_TYPE_LAST == 9, "Please update this function to handle the new resource type");
     switch (Type)
     {
         case SHADER_RESOURCE_TYPE_CONSTANT_BUFFER:
@@ -546,6 +562,10 @@ void ShaderResourceCacheD3D12::Resource::TransitionResource(CommandContext& Ctx)
             // Nothing to transition
             break;
 
+        case SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS:
+            // Push constants don't have resources to transition
+            break;
+
         case SHADER_RESOURCE_TYPE_ACCEL_STRUCT:
         {
             TopLevelASD3D12Impl* pTlasD3D12 = pObject.RawPtr<TopLevelASD3D12Impl>();
@@ -569,7 +589,7 @@ void ShaderResourceCacheD3D12::Resource::TransitionResource(CommandContext& Ctx)
 #ifdef DILIGENT_DEVELOPMENT
 void ShaderResourceCacheD3D12::Resource::DvpVerifyResourceState()
 {
-    static_assert(SHADER_RESOURCE_TYPE_LAST == 8, "Please update this function to handle the new resource type");
+    static_assert(SHADER_RESOURCE_TYPE_LAST == 9, "Please update this function to handle the new resource type");
     switch (Type)
     {
         case SHADER_RESOURCE_TYPE_CONSTANT_BUFFER:
@@ -658,6 +678,10 @@ void ShaderResourceCacheD3D12::Resource::DvpVerifyResourceState()
 
         case SHADER_RESOURCE_TYPE_SAMPLER:
             // No resource
+            break;
+
+        case SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS:
+            // Push constants don't have resources
             break;
 
         case SHADER_RESOURCE_TYPE_ACCEL_STRUCT:

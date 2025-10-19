@@ -177,11 +177,26 @@ public:
                                       const char*                     PSOName) const;
 #endif
 
+    // Returns push constants info
+    Uint32 GetPushConstantsRootIndex() const { return m_PushConstantsRootIndex; }
+    Uint32 GetPushConstantsSize() const { return m_PushConstantsSize; }
+    SHADER_TYPE GetPushConstantsShaderStages() const { return m_PushConstantsShaderStages; }
+    bool HasPushConstants() const { return m_PushConstantsSize > 0; }
+
+    void CommitPushConstants(const CommitCacheResourcesAttribs& CommitAttribs,
+                             const void*                        pData,
+                             Uint32                             DataSize) const;
+
 private:
     void AllocateRootParameters(bool IsSerialized);
 
 private:
     RootParamsManager m_RootParams;
+
+    // Push constants metadata
+    Uint32      m_PushConstantsRootIndex   = ~0u;
+    Uint32      m_PushConstantsSize        = 0;
+    SHADER_TYPE m_PushConstantsShaderStages = SHADER_TYPE_UNKNOWN;
 };
 
 } // namespace Diligent

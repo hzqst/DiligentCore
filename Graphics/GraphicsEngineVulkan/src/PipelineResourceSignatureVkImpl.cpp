@@ -54,7 +54,7 @@ DescriptorType GetDescriptorType(const PipelineResourceDesc& Res)
     const bool UseTexelBuffer    = (Res.Flags & PIPELINE_RESOURCE_FLAG_FORMATTED_BUFFER) != 0;
     const bool GeneralInputAtt   = (Res.Flags & PIPELINE_RESOURCE_FLAG_GENERAL_INPUT_ATTACHMENT) != 0;
 
-    static_assert(SHADER_RESOURCE_TYPE_LAST == SHADER_RESOURCE_TYPE_ACCEL_STRUCT, "Please update the switch below to handle the new shader resource type");
+    static_assert(SHADER_RESOURCE_TYPE_LAST == SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS, "Please update the switch below to handle the new shader resource type");
     switch (Res.ResourceType)
     {
         case SHADER_RESOURCE_TYPE_CONSTANT_BUFFER:

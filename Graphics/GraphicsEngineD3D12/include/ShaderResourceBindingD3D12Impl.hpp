@@ -52,6 +52,19 @@ public:
     ~ShaderResourceBindingD3D12Impl();
 
     IMPLEMENT_QUERY_INTERFACE_IN_PLACE(IID_ShaderResourceBindingD3D12, TBase)
+
+    // IShaderResourceBinding methods
+    virtual void DILIGENT_CALL_TYPE SetPushConstants(const void* pData,
+                                                     Uint32      ByteSize,
+                                                     Uint32      ByteOffset) override final;
+
+    // Get push constants data for committing
+    const void* GetPushConstantsData() const { return m_PushConstantsData.empty() ? nullptr : m_PushConstantsData.data(); }
+    Uint32 GetPushConstantsDataSize() const { return static_cast<Uint32>(m_PushConstantsData.size()); }
+
+private:
+    // Cached push constants data
+    std::vector<Uint8> m_PushConstantsData;
 };
 
 } // namespace Diligent

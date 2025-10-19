@@ -839,7 +839,12 @@ void ValidatePipelineResourceCompatibility(const PipelineResourceDesc& ResDesc,
                                            const char*                 ShaderName,
                                            const char*                 SignatureName) noexcept(false)
 {
-    if (Type != ResDesc.ResourceType)
+    // Push constants and constant buffers are compatible in HLSL (both use cbuffer syntax)
+    const bool TypesCompatible = (Type == ResDesc.ResourceType) ||
+                                 (Type == SHADER_RESOURCE_TYPE_CONSTANT_BUFFER && ResDesc.ResourceType == SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS) ||
+                                 (Type == SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS && ResDesc.ResourceType == SHADER_RESOURCE_TYPE_CONSTANT_BUFFER);
+    
+    if (!TypesCompatible)
     {
         LOG_ERROR_AND_THROW("Shader '", ShaderName, "' contains resource with name '", ResDesc.Name,
                             "' and type '", GetShaderResourceTypeLiteralName(Type), "' that is not compatible with type '",

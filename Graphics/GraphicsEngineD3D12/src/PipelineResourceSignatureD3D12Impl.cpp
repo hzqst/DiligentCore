@@ -50,6 +50,44 @@ namespace
 
 void ValidatePipelineResourceSignatureDescD3D12(const PipelineResourceSignatureDesc& Desc) noexcept(false)
 {
+    // Validate push constants
+    {
+        Uint32 PushConstantsCount = 0;
+        Uint32 TotalPushConstantsSize = 0;
+        for (Uint32 i = 0; i < Desc.NumResources; ++i)
+        {
+            const PipelineResourceDesc& Res = Desc.Resources[i];
+            if (Res.ResourceType == SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS)
+            {
+                ++PushConstantsCount;
+                TotalPushConstantsSize += Res.ArraySize;
+
+                // Validate size is multiple of 4 bytes (1 DWORD)
+                if (Res.ArraySize == 0 || (Res.ArraySize % 4) != 0)
+                {
+                    LOG_ERROR_AND_THROW("Pipeline resource signature '", (Desc.Name != nullptr ? Desc.Name : ""),
+                                        "': push constants resource '", Res.Name, "' has invalid size ", Res.ArraySize,
+                                        ". Size must be a non-zero multiple of 4 bytes.");
+                }
+            }
+        }
+
+        if (PushConstantsCount > 1)
+        {
+            LOG_ERROR_AND_THROW("Pipeline resource signature '", (Desc.Name != nullptr ? Desc.Name : ""),
+                                "' defines ", PushConstantsCount, " push constants resources. Only one push constants resource is allowed per signature.");
+        }
+
+        // D3D12 typically allows up to 64 DWORDs (256 bytes) for root constants per root signature
+        constexpr Uint32 MaxPushConstantsSize = 256;
+        if (TotalPushConstantsSize > MaxPushConstantsSize)
+        {
+            LOG_ERROR_AND_THROW("Pipeline resource signature '", (Desc.Name != nullptr ? Desc.Name : ""),
+                                "': total push constants size ", TotalPushConstantsSize, " bytes exceeds the maximum allowed size of ",
+                                MaxPushConstantsSize, " bytes.");
+        }
+    }
+
     {
         std::unordered_multimap<HashMapStringKey, SHADER_TYPE> ResNameToShaderStages;
         for (Uint32 i = 0; i < Desc.NumResources; ++i)
@@ -278,9 +316,29 @@ void PipelineResourceSignatureD3D12Impl::AllocateRootParameters(const bool IsSer
             const bool IsArray           = ResDesc.ArraySize != 1;
 
             d3d12RootParamType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-            static_assert(SHADER_RESOURCE_TYPE_LAST == SHADER_RESOURCE_TYPE_ACCEL_STRUCT, "Please update the switch below to handle the new shader resource type");
+            static_assert(SHADER_RESOURCE_TYPE_LAST == SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS, "Please update the switch below to handle the new shader resource type");
             switch (ResDesc.ResourceType)
             {
+                case SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS:
+                    // Push constants use D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS
+                    // ArraySize is in bytes, but D3D12 needs number of 32-bit values
+                    VERIFY_EXPR((ResDesc.ArraySize % 4) == 0);
+                    d3d12RootParamType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+                    
+                    // Allocate root parameter for push constants
+                    // Pass ResDesc.ArraySize / 4 as the number of 32-bit values
+                    ParamsBuilder.AllocateResourceSlot(ResDesc.ShaderStages, ResDesc.VarType, d3d12RootParamType,
+                                                       D3D12_DESCRIPTOR_RANGE_TYPE_CBV, ResDesc.ArraySize, 0, 0,
+                                                       SRBRootIndex, SRBOffsetFromTableStart);
+                    
+                    // Store push constants parameters
+                    m_PushConstantsRootIndex    = SRBRootIndex;
+                    m_PushConstantsSize         = ResDesc.ArraySize;
+                    m_PushConstantsShaderStages = ResDesc.ShaderStages;
+                    
+                    // Skip the second AllocateResourceSlot call below
+                    continue;
+
                 case SHADER_RESOURCE_TYPE_CONSTANT_BUFFER:
                     VERIFY(!IsFormattedBuffer, "Constant buffers can't be labeled as formatted. This error should've been caught by ValidatePipelineResourceSignatureDesc().");
                     d3d12RootParamType = UseDynamicOffset && !IsArray ? D3D12_ROOT_PARAMETER_TYPE_CBV : D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
@@ -399,6 +457,10 @@ void PipelineResourceSignatureD3D12Impl::CopyStaticResources(ShaderResourceCache
         const bool                         IsSampler = (ResDesc.ResourceType == SHADER_RESOURCE_TYPE_SAMPLER);
         VERIFY_EXPR(ResDesc.VarType == SHADER_RESOURCE_VARIABLE_TYPE_STATIC);
 
+        // Push constants are set via SetPushConstants() API, not through resource cache
+        if (ResDesc.ResourceType == SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS)
+            continue;
+
         if (IsSampler && Attr.IsImmutableSamplerAssigned())
         {
             // Immutable samplers should not be assigned cache space
@@ -492,7 +554,7 @@ void PipelineResourceSignatureD3D12Impl::CommitRootViews(const CommitCacheResour
         BufferGPUAddress += UINT64{Res.BufferBaseOffset} + UINT64{Res.BufferDynamicOffset};
 
         ID3D12GraphicsCommandList* const pd3d12CmdList = CommitAttribs.CmdCtx.GetCommandList();
-        static_assert(SHADER_RESOURCE_TYPE_LAST == SHADER_RESOURCE_TYPE_ACCEL_STRUCT, "Please update the switch below to handle the new shader resource type");
+        static_assert(SHADER_RESOURCE_TYPE_LAST == SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS, "Please update the switch below to handle the new shader resource type");
         switch (Res.Type)
         {
             case SHADER_RESOURCE_TYPE_CONSTANT_BUFFER:
@@ -634,6 +696,30 @@ void PipelineResourceSignatureD3D12Impl::CommitRootTables(const CommitCacheResou
     }
 }
 
+void PipelineResourceSignatureD3D12Impl::CommitPushConstants(const CommitCacheResourcesAttribs& CommitAttribs,
+                                                             const void*                        pData,
+                                                             Uint32                             DataSize) const
+{
+    if (!HasPushConstants() || pData == nullptr || DataSize == 0)
+        return;
+
+    VERIFY_EXPR(DataSize <= m_PushConstantsSize);
+    VERIFY_EXPR((DataSize % 4) == 0); // Must be multiple of 4 bytes (DWORD)
+
+    const Uint32 Num32BitValues = DataSize / 4;
+    ID3D12GraphicsCommandList* const pd3d12CmdList = CommitAttribs.CmdCtx.GetCommandList();
+    const Uint32 RootParameterIndex = CommitAttribs.BaseRootIndex + m_PushConstantsRootIndex;
+
+    if (CommitAttribs.IsCompute)
+    {
+        pd3d12CmdList->SetComputeRoot32BitConstants(RootParameterIndex, Num32BitValues, pData, 0);
+    }
+    else
+    {
+        pd3d12CmdList->SetGraphicsRoot32BitConstants(RootParameterIndex, Num32BitValues, pData, 0);
+    }
+}
+
 
 void PipelineResourceSignatureD3D12Impl::UpdateShaderResourceBindingMap(ResourceBinding::TMap& ResourceMap, SHADER_TYPE ShaderStage, Uint32 BaseRegisterSpace) const
 {
@@ -727,6 +813,10 @@ bool PipelineResourceSignatureD3D12Impl::DvpValidateCommittedResource(const Devi
     VERIFY_EXPR(strcmp(ResDesc.Name, D3DAttribs.Name) == 0);
     VERIFY_EXPR(D3DAttribs.BindCount <= ResDesc.ArraySize);
 
+    // Push constants don't bind objects, so skip validation
+    if (ResDesc.ResourceType == SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS)
+        return true;
+
     if ((ResDesc.ResourceType == SHADER_RESOURCE_TYPE_SAMPLER) && ResAttribs.IsImmutableSamplerAssigned())
         return true;
 
@@ -773,7 +863,7 @@ bool PipelineResourceSignatureD3D12Impl::DvpValidateCommittedResource(const Devi
             }
         }
 
-        static_assert(SHADER_RESOURCE_TYPE_LAST == 8, "Please update the switch below to handle the new shader resource type");
+        static_assert(SHADER_RESOURCE_TYPE_LAST == 9, "Please update the switch below to handle the new shader resource type");
         switch (ResDesc.ResourceType)
         {
             case SHADER_RESOURCE_TYPE_TEXTURE_SRV:
@@ -828,6 +918,11 @@ bool PipelineResourceSignatureD3D12Impl::DvpValidateCommittedResource(const Devi
                             VERIFY_EXPR((ResourceCache.GetNonDynamicRootBuffersMask() & (Uint64{1} << RootIndex)) != 0);
                     }
                 }
+                break;
+
+            case SHADER_RESOURCE_TYPE_32_BIT_CONSTANTS:
+                // Push constants validation is handled at the beginning of this function
+                // This case should never be reached
                 break;
 
             default:
