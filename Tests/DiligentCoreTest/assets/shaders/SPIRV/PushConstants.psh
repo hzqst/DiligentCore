@@ -8,49 +8,16 @@ struct PushConstants_t
     uint     g_Padding;
 };
 
-/*
-Note that glslang allows following declaration:
-
-[[vk::push_constant]]
-cbuffer PushConstants
-{
-    PushConstants_t g_PushConstants;
-};
-
-to generate a push constant resource: "Push Constants 'PushConstants'".
-
-but DXC does not allow it.
-
-Glslang converts "[[vk::push_constant]] PushConstants_t g_PushConstants;" into an unnamed resource:
-"Uniform Buffer '$Global'" instead of what we expected: "Push Constants 'PushConstants'", 
-
-Thus we have to use "[[vk::push_constant]] cbuffer PushConstants" under glslang while "[[vk::push_constant]] PushConstants_t g_PushConstants;" under DXC.
-*/
-
-#if DXC
-
-#define g_PushConstants PushConstants
-
-[[vk::push_constant]]
-PushConstants_t g_PushConstants;
-
-#else
-
-[[vk::push_constant]]
-cbuffer PushConstants
-{
-    PushConstants_t g_PushConstants;
-};
-
-#endif
+//note that cbuffer PushConstants is not allowed in DXC, but ConstantBuffer<PushConstants_t> is allowed
+[[vk::push_constant]] ConstantBuffer<PushConstants_t> PushConstants;
 
 float4 main() : SV_Target
 {
     // Use push constant data through the structure instance
-    float4 result = g_PushConstants.g_Color * g_PushConstants.g_Scale;
+    float4 result = PushConstants.g_Color * PushConstants.g_Scale;
 
     // Apply offset to result (simplified example)
-    result.xy += g_PushConstants.g_Offset;
+    result.xy += PushConstants.g_Offset;
 
     return result;
 }
