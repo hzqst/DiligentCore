@@ -64,6 +64,12 @@ if(WEBGPU_SUPPORTED)
     target_link_libraries(DiligentCoreTest PRIVATE libtint)
 endif()
 
+if(PLATFORM_WIN32)
+    copy_required_dlls(DiligentCoreTest
+        DXC_REQUIRED YES
+    )
+endif()
+
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SOURCE} ${SHADERS}})
 
 set_target_properties(DiligentCoreTest

@@ -35,11 +35,22 @@ struct PushConstants_t
     uint FrameCount;
 };
 
+#if DXC
+
+#define g_PushConstants PushConstants
+
+[[vk::push_constant]]
+PushConstants_t g_PushConstants;
+
+#else
+
 [[vk::push_constant]]
 cbuffer PushConstants
 {
     PushConstants_t g_PushConstants;
 };
+
+#endif
 
 float4 main() : SV_Target
 {

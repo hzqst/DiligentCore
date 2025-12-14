@@ -44,6 +44,7 @@ using namespace Diligent::Testing;
 
 namespace
 {
+std::unique_ptr<IDXCompiler> g_pDXCompiler;
 
 class SPIRVShaderResourcesTest : public ::testing::Test
 {
@@ -51,11 +52,15 @@ protected:
     static void SetUpTestSuite()
     {
         GLSLangUtils::InitializeGlslang();
+
+        g_pDXCompiler = CreateDXCompiler(DXCompilerTarget::Vulkan, 0, nullptr);
     }
 
     static void TearDownTestSuite()
     {
         GLSLangUtils::FinalizeGlslang();
+
+        g_pDXCompiler.reset();
     }
 };
 
@@ -78,8 +83,7 @@ std::vector<unsigned int> LoadSPIRVFromHLSL(const char* FilePath, SHADER_TYPE Sh
     if (UseDXC)
     {
         // Use DXC to compile HLSL to SPIR-V.
-        auto pDXC = CreateDXCompiler(DXCompilerTarget::Vulkan, 0, nullptr);
-        if (!pDXC || !pDXC->IsLoaded())
+        if (!g_pDXCompiler || !g_pDXCompiler->IsLoaded())
             return {};
 
         ShaderCreateInfo ShaderCI;
@@ -88,14 +92,24 @@ std::vector<unsigned int> LoadSPIRVFromHLSL(const char* FilePath, SHADER_TYPE Sh
         ShaderCI.Desc           = {"SPIRV test shader", ShaderType};
         ShaderCI.EntryPoint     = "main";
 
+        ShaderMacro Macros[] = {{"DXC", "1"}};
+        ShaderCI.Macros      = {Macros, _countof(Macros)};
+
         RefCntAutoPtr<IShaderSourceInputStreamFactory> pShaderSourceStreamFactory;
         CreateDefaultShaderSourceStreamFactory("shaders/SPIRV", &pShaderSourceStreamFactory);
         if (!pShaderSourceStreamFactory)
             return {};
+
         ShaderCI.pShaderSourceStreamFactory = pShaderSourceStreamFactory;
 
         RefCntAutoPtr<IDataBlob> pCompilerOutput;
-        pDXC->Compile(ShaderCI, ShaderVersion{6, 0}, nullptr, nullptr, &SPIRV, &pCompilerOutput);
+        g_pDXCompiler->Compile(ShaderCI, ShaderVersion{6, 0}, nullptr, nullptr, &SPIRV, &pCompilerOutput);
+
+        if (pCompilerOutput && pCompilerOutput->GetSize() > 0)
+        {
+            std::string CompilerOutput = static_cast<const char*>(pCompilerOutput->GetConstDataPtr());
+            LOG_INFO_MESSAGE("DXC compiler output:\n", CompilerOutput);
+        }
     }
     else
     {
@@ -219,8 +233,14 @@ void TestSPIRVResources(const char*                                       FilePa
                         bool                                              IsGLSL                = false)
 {
     const auto& SPIRV = IsGLSL ? LoadSPIRVFromGLSL(FilePath, ShaderType) : LoadSPIRVFromHLSL(FilePath, ShaderType);
-    ASSERT_FALSE(SPIRV.empty()) << "Failed to compile HLSL to SPIRV with glslang: " << FilePath;
+    ASSERT_FALSE(SPIRV.empty()) << 
+    (IsGLSL ? 
+        "Failed to compile GLSL to SPIRV with glslang: " : 
+        "Failed to compile HLSL to SPIRV with glslang: "
+    ) << FilePath;
 
+    LOG_INFO_MESSAGE(IsGLSL ? "Testing with GLSL->SPIRV with glslang:\n" : "Testing with HLSL->SPIRV with glslang:\n", FilePath);
+    
     TestSPIRVResourcesInternal(FilePath, RefResources, SPIRV, ShaderType, CombinedSamplerSuffix);
 
     if (!IsGLSL)
@@ -228,6 +248,9 @@ void TestSPIRVResources(const char*                                       FilePa
         //Test with DXC
         const auto& SPIRV_DXC = LoadSPIRVFromHLSL(FilePath, ShaderType, true);
         ASSERT_FALSE(SPIRV_DXC.empty()) << "Failed to compile HLSL to SPIRV with DXC: " << FilePath;
+
+        LOG_INFO_MESSAGE("Testing with HLSL->SPIRV with DXC:\n", FilePath);
+        
         TestSPIRVResourcesInternal(FilePath, RefResources, SPIRV_DXC, ShaderType, CombinedSamplerSuffix);
     }
 }
@@ -238,7 +261,6 @@ TEST_F(SPIRVShaderResourcesTest, UniformBuffers)
 {
     TestSPIRVResources("UniformBuffers.psh",
                        {
-                           // CB0 is optimized away as it's not used in the shader
                            SPIRVShaderResourceRefAttribs{"CB1", 1, SPIRVResourceType::UniformBuffer, RESOURCE_DIM_BUFFER, 0, 48, 0},
                            SPIRVShaderResourceRefAttribs{"CB2", 1, SPIRVResourceType::UniformBuffer, RESOURCE_DIM_BUFFER, 0, 16, 0},
                        });

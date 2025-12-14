@@ -1,4 +1,4 @@
-// Test for push constants
+// Test struct for push constants
 struct PushConstants_t
 {
     float4x4 g_MVPMatrix;
@@ -8,11 +8,41 @@ struct PushConstants_t
     uint     g_Padding;
 };
 
+/*
+Note that glslang allows following declaration:
+
 [[vk::push_constant]]
 cbuffer PushConstants
 {
     PushConstants_t g_PushConstants;
 };
+
+to generate a push constant resource: "Push Constants 'PushConstants'".
+
+but DXC does not allow it.
+
+Glslang converts "[[vk::push_constant]] PushConstants_t g_PushConstants;" into an unnamed resource:
+"Uniform Buffer '$Global'" instead of what we expected: "Push Constants 'PushConstants'", 
+
+Thus we have to use "[[vk::push_constant]] cbuffer PushConstants" under glslang while "[[vk::push_constant]] PushConstants_t g_PushConstants;" under DXC.
+*/
+
+#if DXC
+
+#define g_PushConstants PushConstants
+
+[[vk::push_constant]]
+PushConstants_t g_PushConstants;
+
+#else
+
+[[vk::push_constant]]
+cbuffer PushConstants
+{
+    PushConstants_t g_PushConstants;
+};
+
+#endif
 
 float4 main() : SV_Target
 {
