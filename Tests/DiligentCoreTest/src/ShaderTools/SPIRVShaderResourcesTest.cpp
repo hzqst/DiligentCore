@@ -26,6 +26,7 @@
 
 #include "SPIRVShaderResources.hpp"
 #include "GLSLangUtils.hpp"
+#include "DXCompiler.hpp"
 #include "DefaultShaderSourceStreamFactory.h"
 #include "RefCntAutoPtr.hpp"
 #include "EngineMemory.h"
@@ -70,22 +71,52 @@ struct SPIRVShaderResourceRefAttribs
     const Uint32                                   BufferStride;
 };
 
-std::vector<unsigned int> LoadSPIRVFromHLSL(const char* FilePath, SHADER_TYPE ShaderType = SHADER_TYPE_PIXEL)
+std::vector<unsigned int> LoadSPIRVFromHLSL(const char* FilePath, SHADER_TYPE ShaderType = SHADER_TYPE_PIXEL, bool UseDXC = false)
 {
-    ShaderCreateInfo ShaderCI;
-    ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_HLSL;
-    ShaderCI.FilePath       = FilePath;
-    ShaderCI.Desc           = {"SPIRV test shader", ShaderType};
-    ShaderCI.EntryPoint     = "main";
+    std::vector<unsigned int> SPIRV;
 
-    RefCntAutoPtr<IShaderSourceInputStreamFactory> pShaderSourceStreamFactory;
-    CreateDefaultShaderSourceStreamFactory("shaders/SPIRV", &pShaderSourceStreamFactory);
-    if (!pShaderSourceStreamFactory)
-        return {};
+    if (UseDXC)
+    {
+        // Use DXC to compile HLSL to SPIR-V.
+        auto pDXC = CreateDXCompiler(DXCompilerTarget::Vulkan, 0, nullptr);
+        if (!pDXC || !pDXC->IsLoaded())
+            return {};
 
-    ShaderCI.pShaderSourceStreamFactory = pShaderSourceStreamFactory;
+        ShaderCreateInfo ShaderCI;
+        ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_HLSL;
+        ShaderCI.FilePath       = FilePath;
+        ShaderCI.Desc           = {"SPIRV test shader", ShaderType};
+        ShaderCI.EntryPoint     = "main";
 
-    return GLSLangUtils::HLSLtoSPIRV(ShaderCI, GLSLangUtils::SpirvVersion::Vk100, nullptr, nullptr);
+        RefCntAutoPtr<IShaderSourceInputStreamFactory> pShaderSourceStreamFactory;
+        CreateDefaultShaderSourceStreamFactory("shaders/SPIRV", &pShaderSourceStreamFactory);
+        if (!pShaderSourceStreamFactory)
+            return {};
+        ShaderCI.pShaderSourceStreamFactory = pShaderSourceStreamFactory;
+
+        RefCntAutoPtr<IDataBlob> pCompilerOutput;
+        pDXC->Compile(ShaderCI, ShaderVersion{6, 0}, nullptr, nullptr, &SPIRV, &pCompilerOutput);
+    }
+    else
+    {
+        // Use Glslang to compile HLSL to SPIR-V.
+        ShaderCreateInfo ShaderCI;
+        ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_HLSL;
+        ShaderCI.FilePath       = FilePath;
+        ShaderCI.Desc           = {"SPIRV test shader", ShaderType};
+        ShaderCI.EntryPoint     = "main";
+
+        RefCntAutoPtr<IShaderSourceInputStreamFactory> pShaderSourceStreamFactory;
+        CreateDefaultShaderSourceStreamFactory("shaders/SPIRV", &pShaderSourceStreamFactory);
+        if (!pShaderSourceStreamFactory)
+            return {};
+
+        ShaderCI.pShaderSourceStreamFactory = pShaderSourceStreamFactory;
+
+        SPIRV = GLSLangUtils::HLSLtoSPIRV(ShaderCI, GLSLangUtils::SpirvVersion::Vk100, nullptr, nullptr);
+    }
+
+    return SPIRV;
 }
 
 std::vector<unsigned int> LoadSPIRVFromGLSL(const char* FilePath, SHADER_TYPE ShaderType = SHADER_TYPE_PIXEL)
@@ -130,15 +161,12 @@ std::vector<unsigned int> LoadSPIRVFromGLSL(const char* FilePath, SHADER_TYPE Sh
     return GLSLangUtils::GLSLtoSPIRV(Attribs);
 }
 
-void TestSPIRVResources(const char*                                       FilePath,
-                        const std::vector<SPIRVShaderResourceRefAttribs>& RefResources,
-                        SHADER_TYPE                                       ShaderType            = SHADER_TYPE_PIXEL,
-                        const char*                                       CombinedSamplerSuffix = nullptr,
-                        bool                                              IsGLSL                = false)
+void TestSPIRVResourcesInternal(const char*           FilePath,
+    const std::vector<SPIRVShaderResourceRefAttribs>& RefResources,
+    const std::vector<unsigned int>&                  SPIRV,
+    SHADER_TYPE                                       ShaderType            = SHADER_TYPE_PIXEL,
+    const char*                                       CombinedSamplerSuffix = nullptr)
 {
-    const auto SPIRV = IsGLSL ? LoadSPIRVFromGLSL(FilePath, ShaderType) : LoadSPIRVFromHLSL(FilePath, ShaderType);
-    ASSERT_FALSE(SPIRV.empty()) << "Failed to compile HLSL to SPIRV: " << FilePath;
-
     ShaderDesc ShaderDesc;
     ShaderDesc.Name       = "SPIRVResources test";
     ShaderDesc.ShaderType = ShaderType;
@@ -181,6 +209,26 @@ void TestSPIRVResources(const char*                                       FilePa
         {
             EXPECT_EQ(Res.GetInlineConstantCountOrThrow(FilePath), pRefRes->BufferStaticSize / 4) << Res.Name;
         }
+    }
+}
+
+void TestSPIRVResources(const char*                                       FilePath,
+                        const std::vector<SPIRVShaderResourceRefAttribs>& RefResources,
+                        SHADER_TYPE                                       ShaderType            = SHADER_TYPE_PIXEL,
+                        const char*                                       CombinedSamplerSuffix = nullptr,
+                        bool                                              IsGLSL                = false)
+{
+    const auto& SPIRV = IsGLSL ? LoadSPIRVFromGLSL(FilePath, ShaderType) : LoadSPIRVFromHLSL(FilePath, ShaderType);
+    ASSERT_FALSE(SPIRV.empty()) << "Failed to compile HLSL to SPIRV with glslang: " << FilePath;
+
+    TestSPIRVResourcesInternal(FilePath, RefResources, SPIRV, ShaderType, CombinedSamplerSuffix);
+
+    if (!IsGLSL)
+    {
+        //Test with DXC
+        const auto& SPIRV_DXC = LoadSPIRVFromHLSL(FilePath, ShaderType, true);
+        ASSERT_FALSE(SPIRV_DXC.empty()) << "Failed to compile HLSL to SPIRV with DXC: " << FilePath;
+        TestSPIRVResourcesInternal(FilePath, RefResources, SPIRV_DXC, ShaderType, CombinedSamplerSuffix);
     }
 }
 
