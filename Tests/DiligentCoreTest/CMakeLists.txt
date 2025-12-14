@@ -64,7 +64,7 @@ if(WEBGPU_SUPPORTED)
     target_link_libraries(DiligentCoreTest PRIVATE libtint)
 endif()
 
-if(PLATFORM_WIN32 AND NOT ${DILIGENT_NO_HLSL})
+if(PLATFORM_WIN32)
     copy_required_dlls(DiligentCoreTest
         DXC_REQUIRED YES
     )

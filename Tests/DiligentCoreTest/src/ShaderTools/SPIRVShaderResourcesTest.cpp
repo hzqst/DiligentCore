@@ -244,13 +244,20 @@ void TestSPIRVResources(const char*                                       FilePa
 
     if (!IsGLSL)
     {
-        //Test with DXC
-        const auto& SPIRV_DXC = LoadSPIRVFromHLSL(FilePath, ShaderType, true);
-        ASSERT_FALSE(SPIRV_DXC.empty()) << "Failed to compile HLSL to SPIRV with DXC: " << FilePath;
+        if (g_pDXCompiler && g_pDXCompiler->IsLoaded())
+        {
+            //Test with DXC
+            const auto& SPIRV_DXC = LoadSPIRVFromHLSL(FilePath, ShaderType, true);
+            ASSERT_FALSE(SPIRV_DXC.empty()) << "Failed to compile HLSL to SPIRV with DXC: " << FilePath;
 
-        LOG_INFO_MESSAGE("Testing with HLSL->SPIRV with DXC:\n", FilePath);
+            LOG_INFO_MESSAGE("Testing with HLSL->SPIRV with DXC:\n", FilePath);
 
-        TestSPIRVResourcesInternal(FilePath, RefResources, SPIRV_DXC, ShaderType, CombinedSamplerSuffix);
+            TestSPIRVResourcesInternal(FilePath, RefResources, SPIRV_DXC, ShaderType, CombinedSamplerSuffix);
+        }
+        else
+        {
+            LOG_INFO_MESSAGE("HLSL->SPIRV with DXC skipped because DXCompiler is not available:\n", FilePath);
+        }
     }
 }
 
