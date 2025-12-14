@@ -175,11 +175,11 @@ std::vector<unsigned int> LoadSPIRVFromGLSL(const char* FilePath, SHADER_TYPE Sh
     return GLSLangUtils::GLSLtoSPIRV(Attribs);
 }
 
-void TestSPIRVResourcesInternal(const char*           FilePath,
-    const std::vector<SPIRVShaderResourceRefAttribs>& RefResources,
-    const std::vector<unsigned int>&                  SPIRV,
-    SHADER_TYPE                                       ShaderType            = SHADER_TYPE_PIXEL,
-    const char*                                       CombinedSamplerSuffix = nullptr)
+void TestSPIRVResourcesInternal(const char*                                       FilePath,
+                                const std::vector<SPIRVShaderResourceRefAttribs>& RefResources,
+                                const std::vector<unsigned int>&                  SPIRV,
+                                SHADER_TYPE                                       ShaderType            = SHADER_TYPE_PIXEL,
+                                const char*                                       CombinedSamplerSuffix = nullptr)
 {
     ShaderDesc ShaderDesc;
     ShaderDesc.Name       = "SPIRVResources test";
@@ -233,14 +233,13 @@ void TestSPIRVResources(const char*                                       FilePa
                         bool                                              IsGLSL                = false)
 {
     const auto& SPIRV = IsGLSL ? LoadSPIRVFromGLSL(FilePath, ShaderType) : LoadSPIRVFromHLSL(FilePath, ShaderType);
-    ASSERT_FALSE(SPIRV.empty()) << 
-    (IsGLSL ? 
-        "Failed to compile GLSL to SPIRV with glslang: " : 
-        "Failed to compile HLSL to SPIRV with glslang: "
-    ) << FilePath;
+    ASSERT_FALSE(SPIRV.empty()) << (IsGLSL ?
+                                        "Failed to compile GLSL to SPIRV with glslang: " :
+                                        "Failed to compile HLSL to SPIRV with glslang: ")
+                                << FilePath;
 
     LOG_INFO_MESSAGE(IsGLSL ? "Testing with GLSL->SPIRV with glslang:\n" : "Testing with HLSL->SPIRV with glslang:\n", FilePath);
-    
+
     TestSPIRVResourcesInternal(FilePath, RefResources, SPIRV, ShaderType, CombinedSamplerSuffix);
 
     if (!IsGLSL)
@@ -250,7 +249,7 @@ void TestSPIRVResources(const char*                                       FilePa
         ASSERT_FALSE(SPIRV_DXC.empty()) << "Failed to compile HLSL to SPIRV with DXC: " << FilePath;
 
         LOG_INFO_MESSAGE("Testing with HLSL->SPIRV with DXC:\n", FilePath);
-        
+
         TestSPIRVResourcesInternal(FilePath, RefResources, SPIRV_DXC, ShaderType, CombinedSamplerSuffix);
     }
 }
