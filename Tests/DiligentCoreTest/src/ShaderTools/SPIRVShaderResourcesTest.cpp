@@ -44,23 +44,26 @@ using namespace Diligent::Testing;
 
 namespace
 {
-std::unique_ptr<IDXCompiler> g_pDXCompiler;
 
 class SPIRVShaderResourcesTest : public ::testing::Test
 {
+public:
+    static std::unique_ptr<IDXCompiler> DXCompiler;
+
 protected:
+
     static void SetUpTestSuite()
     {
         GLSLangUtils::InitializeGlslang();
 
-        g_pDXCompiler = CreateDXCompiler(DXCompilerTarget::Vulkan, 0, nullptr);
+        DXCompiler = CreateDXCompiler(DXCompilerTarget::Vulkan, 0, nullptr);
     }
 
     static void TearDownTestSuite()
     {
         GLSLangUtils::FinalizeGlslang();
 
-        g_pDXCompiler.reset();
+        DXCompiler.reset();
     }
 };
 
@@ -83,7 +86,7 @@ std::vector<unsigned int> LoadSPIRVFromHLSL(const char* FilePath, SHADER_TYPE Sh
     if (UseDXC)
     {
         // Use DXC to compile HLSL to SPIR-V.
-        if (!g_pDXCompiler || !g_pDXCompiler->IsLoaded())
+        if (!SPIRVShaderResourcesTest::DXCompiler || !SPIRVShaderResourcesTest::DXCompiler->IsLoaded())
             return {};
 
         ShaderCreateInfo ShaderCI;
@@ -103,7 +106,7 @@ std::vector<unsigned int> LoadSPIRVFromHLSL(const char* FilePath, SHADER_TYPE Sh
         ShaderCI.pShaderSourceStreamFactory = pShaderSourceStreamFactory;
 
         RefCntAutoPtr<IDataBlob> pCompilerOutput;
-        g_pDXCompiler->Compile(ShaderCI, ShaderVersion{6, 0}, nullptr, nullptr, &SPIRV, &pCompilerOutput);
+        SPIRVShaderResourcesTest::DXCompiler->Compile(ShaderCI, ShaderVersion{6, 0}, nullptr, nullptr, &SPIRV, &pCompilerOutput);
 
         if (pCompilerOutput && pCompilerOutput->GetSize() > 0)
         {
@@ -244,7 +247,7 @@ void TestSPIRVResources(const char*                                       FilePa
 
     if (!IsGLSL)
     {
-        if (g_pDXCompiler && g_pDXCompiler->IsLoaded())
+        if (SPIRVShaderResourcesTest::DXCompiler && SPIRVShaderResourcesTest::DXCompiler->IsLoaded())
         {
             //Test with DXC
             const auto& SPIRV_DXC = LoadSPIRVFromHLSL(FilePath, ShaderType, true);
