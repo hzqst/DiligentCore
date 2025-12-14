@@ -51,7 +51,6 @@ public:
     static std::unique_ptr<IDXCompiler> DXCompiler;
 
 protected:
-
     static void SetUpTestSuite()
     {
         GLSLangUtils::InitializeGlslang();
