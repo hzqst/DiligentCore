@@ -66,6 +66,7 @@ protected:
     }
 };
 
+std::unique_ptr<IDXCompiler> SPIRVShaderResourcesTest::DXCompiler;
 
 struct SPIRVShaderResourceRefAttribs
 {
