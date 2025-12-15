@@ -181,8 +181,7 @@ std::vector<unsigned int> LoadSPIRVFromGLSL(const char* FilePath, SHADER_TYPE Sh
 void TestSPIRVResourcesInternal(const char*                                       FilePath,
                                 const std::vector<SPIRVShaderResourceRefAttribs>& RefResources,
                                 const std::vector<unsigned int>&                  SPIRV,
-                                SHADER_TYPE                                       ShaderType            = SHADER_TYPE_PIXEL,
-                                const char*                                       CombinedSamplerSuffix = nullptr)
+                                SHADER_TYPE                                       ShaderType            = SHADER_TYPE_PIXEL)
 {
     ShaderDesc ShaderDesc;
     ShaderDesc.Name       = "SPIRVResources test";
@@ -193,7 +192,7 @@ void TestSPIRVResourcesInternal(const char*                                     
         GetRawAllocator(),
         SPIRV,
         ShaderDesc,
-        CombinedSamplerSuffix,
+        nullptr,
         false, // LoadShaderStageInputs
         false, // LoadUniformBufferReflection
         EntryPoint};
@@ -232,20 +231,19 @@ void TestSPIRVResourcesInternal(const char*                                     
 void TestSPIRVResources(const char*                                       FilePath,
                         const std::vector<SPIRVShaderResourceRefAttribs>& RefResources,
                         SHADER_TYPE                                       ShaderType            = SHADER_TYPE_PIXEL,
-                        const char*                                       CombinedSamplerSuffix = nullptr,
-                        bool                                              IsGLSL                = false)
+                        SHADER_SOURCE_LANGUAGE                            SourceLanguage        = SHADER_SOURCE_LANGUAGE_HLSL)
 {
-    const auto& SPIRV = IsGLSL ? LoadSPIRVFromGLSL(FilePath, ShaderType) : LoadSPIRVFromHLSL(FilePath, ShaderType);
-    ASSERT_FALSE(SPIRV.empty()) << (IsGLSL ?
+    const auto& SPIRV = (SourceLanguage == SHADER_SOURCE_LANGUAGE_GLSL) ? LoadSPIRVFromGLSL(FilePath, ShaderType) : LoadSPIRVFromHLSL(FilePath, ShaderType);
+    ASSERT_FALSE(SPIRV.empty()) << (SourceLanguage == SHADER_SOURCE_LANGUAGE_GLSL ?
                                         "Failed to compile GLSL to SPIRV with glslang: " :
                                         "Failed to compile HLSL to SPIRV with glslang: ")
                                 << FilePath;
 
-    LOG_INFO_MESSAGE(IsGLSL ? "Testing with GLSL->SPIRV with glslang:\n" : "Testing with HLSL->SPIRV with glslang:\n", FilePath);
+    LOG_INFO_MESSAGE(SourceLanguage == SHADER_SOURCE_LANGUAGE_GLSL ? "Testing with GLSL->SPIRV with glslang:\n" : "Testing with HLSL->SPIRV with glslang:\n", FilePath);
 
-    TestSPIRVResourcesInternal(FilePath, RefResources, SPIRV, ShaderType, CombinedSamplerSuffix);
+    TestSPIRVResourcesInternal(FilePath, RefResources, SPIRV, ShaderType);
 
-    if (!IsGLSL)
+    if (SourceLanguage == SHADER_SOURCE_LANGUAGE_HLSL)
     {
         if (SPIRVShaderResourcesTest::DXCompiler && SPIRVShaderResourcesTest::DXCompiler->IsLoaded())
         {
@@ -255,11 +253,11 @@ void TestSPIRVResources(const char*                                       FilePa
 
             LOG_INFO_MESSAGE("Testing with HLSL->SPIRV with DXC:\n", FilePath);
 
-            TestSPIRVResourcesInternal(FilePath, RefResources, SPIRV_DXC, ShaderType, CombinedSamplerSuffix);
+            TestSPIRVResourcesInternal(FilePath, RefResources, SPIRV_DXC, ShaderType);
         }
         else
         {
-            LOG_INFO_MESSAGE("HLSL->SPIRV with DXC skipped because DXCompiler is not available:\n", FilePath);
+            LOG_INFO_MESSAGE("HLSL->SPIRV with DXC skipped because DXCompiler is not available\n");
         }
     }
 }
@@ -339,8 +337,7 @@ TEST_F(SPIRVShaderResourcesTest, AtomicCounters)
                            SPIRVShaderResourceRefAttribs{"AtomicCounterBuffer", 1, SPIRVResourceType::RWStorageBuffer, RESOURCE_DIM_BUFFER, 0, 4, 0},
                        },
                        SHADER_TYPE_PIXEL,
-                       nullptr,
-                       true); // IsGLSL = true
+                       SHADER_SOURCE_LANGUAGE_GLSL);
 }
 
 TEST_F(SPIRVShaderResourcesTest, InputAttachments)
@@ -361,8 +358,7 @@ TEST_F(SPIRVShaderResourcesTest, AccelerationStructures)
                            SPIRVShaderResourceRefAttribs{"g_AccelStruct", 1, SPIRVResourceType::AccelerationStructure, RESOURCE_DIM_UNDEFINED, 0, 0, 0},
                        },
                        SHADER_TYPE_RAY_GEN,
-                       nullptr,
-                       true); // IsGLSL = true
+                       SHADER_SOURCE_LANGUAGE_GLSL); // IsGLSL = true
 }
 
 TEST_F(SPIRVShaderResourcesTest, PushConstants)
