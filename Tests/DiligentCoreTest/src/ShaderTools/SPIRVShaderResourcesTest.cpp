@@ -181,7 +181,7 @@ std::vector<unsigned int> LoadSPIRVFromGLSL(const char* FilePath, SHADER_TYPE Sh
 void TestSPIRVResourcesInternal(const char*                                       FilePath,
                                 const std::vector<SPIRVShaderResourceRefAttribs>& RefResources,
                                 const std::vector<unsigned int>&                  SPIRV,
-                                SHADER_TYPE                                       ShaderType            = SHADER_TYPE_PIXEL)
+                                SHADER_TYPE                                       ShaderType = SHADER_TYPE_PIXEL)
 {
     ShaderDesc ShaderDesc;
     ShaderDesc.Name       = "SPIRVResources test";
@@ -230,8 +230,8 @@ void TestSPIRVResourcesInternal(const char*                                     
 
 void TestSPIRVResources(const char*                                       FilePath,
                         const std::vector<SPIRVShaderResourceRefAttribs>& RefResources,
-                        SHADER_TYPE                                       ShaderType            = SHADER_TYPE_PIXEL,
-                        SHADER_SOURCE_LANGUAGE                            SourceLanguage        = SHADER_SOURCE_LANGUAGE_HLSL)
+                        SHADER_TYPE                                       ShaderType     = SHADER_TYPE_PIXEL,
+                        SHADER_SOURCE_LANGUAGE                            SourceLanguage = SHADER_SOURCE_LANGUAGE_HLSL)
 {
     const auto& SPIRV = (SourceLanguage == SHADER_SOURCE_LANGUAGE_GLSL) ? LoadSPIRVFromGLSL(FilePath, ShaderType) : LoadSPIRVFromHLSL(FilePath, ShaderType);
     ASSERT_FALSE(SPIRV.empty()) << (SourceLanguage == SHADER_SOURCE_LANGUAGE_GLSL ?
