@@ -47,6 +47,8 @@ public:
                        const SwapChainDesc&  SCDesc);
     ~TestingSwapChainVk();
 
+    void DumpVkImage(ITexture* pTexture, const std::function<void(const Uint8* pPixels, Uint64 PixelsStride, Uint32 Width, Uint32 Height, TEXTURE_FORMAT Format)>& callback);
+
     virtual void TakeSnapshot(ITexture* pCopyFrom) override final;
 
     virtual void NativeDrawCompareWithSnapshot(ITexture* pTexture) override final;

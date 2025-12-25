@@ -239,59 +239,7 @@ void TestingSwapChainVk::EndRenderPass(VkCommandBuffer vkCmdBuffer)
     vkCmdEndRenderPass(vkCmdBuffer);
 }
 
-void TestingSwapChainVk::TakeSnapshot(ITexture* pCopyFrom)
-{
-    TestingEnvironmentVk* pEnv = TestingEnvironmentVk::GetInstance();
-
-    VkCommandBuffer vkCmdBuffer = pEnv->AllocateCommandBuffer();
-
-    VkImage vSrcImage = VK_NULL_HANDLE;
-    if (pCopyFrom == nullptr)
-    {
-        TransitionRenderTarget(vkCmdBuffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, m_ActiveGraphicsShaderStages);
-        vSrcImage = m_vkRenderTargetImage;
-    }
-    else
-    {
-        RefCntAutoPtr<ITextureVk> pSrcTexVk{pCopyFrom, IID_TextureVk};
-        VERIFY_EXPR(pSrcTexVk);
-        VERIFY_EXPR(pSrcTexVk->GetLayout() == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-        VERIFY_EXPR(GetDesc().Width == pSrcTexVk->GetDesc().Width);
-        VERIFY_EXPR(GetDesc().Height == pSrcTexVk->GetDesc().Height);
-        VERIFY_EXPR(GetDesc().ColorBufferFormat == pSrcTexVk->GetDesc().Format);
-        vSrcImage = pSrcTexVk->GetVkImage();
-    }
-
-    VkBufferImageCopy BuffImgCopy{};
-    BuffImgCopy.imageExtent                 = VkExtent3D{m_SwapChainDesc.Width, m_SwapChainDesc.Height, 1};
-    BuffImgCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    BuffImgCopy.imageSubresource.layerCount = 1;
-    VERIFY(m_SwapChainDesc.ColorBufferFormat == TEX_FORMAT_RGBA8_UNORM, "Unexpected color buffer format");
-    BuffImgCopy.bufferRowLength = m_SwapChainDesc.Width; // In texels
-
-    vkCmdCopyImageToBuffer(vkCmdBuffer, vSrcImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                           m_vkStagingBuffer, 1, &BuffImgCopy);
-    vkEndCommandBuffer(vkCmdBuffer);
-
-    pEnv->SubmitCommandBuffer(vkCmdBuffer);
-
-    VERIFY_EXPR(m_StagingBufferSize == m_SwapChainDesc.Width * m_SwapChainDesc.Height * 4);
-    void* pStagingDataPtr = nullptr;
-    vkMapMemory(m_vkDevice, m_vkStagingBufferMemory, 0, m_StagingBufferSize, 0, &pStagingDataPtr);
-
-    m_ReferenceDataPitch = m_SwapChainDesc.Width * 4;
-    m_ReferenceData.resize(m_SwapChainDesc.Height * m_ReferenceDataPitch);
-    for (Uint32 row = 0; row < m_SwapChainDesc.Height; ++row)
-    {
-        memcpy(&m_ReferenceData[row * m_ReferenceDataPitch],
-               reinterpret_cast<const Uint8*>(pStagingDataPtr) + m_SwapChainDesc.Width * 4 * row,
-               m_ReferenceDataPitch);
-    }
-
-    vkUnmapMemory(m_vkDevice, m_vkStagingBufferMemory);
-}
-
-void TestingSwapChainVk::NativeDrawCompareWithSnapshot(ITexture* pTexture)
+void TestingSwapChainVk::DumpVkImage(ITexture* pTexture, const std::function<void(const Uint8* pPixels, Uint64 PixelsStride, Uint32 Width, Uint32 Height, TEXTURE_FORMAT Format)>& callback)
 {
     TestingEnvironmentVk* pEnv = TestingEnvironmentVk::GetInstance();
 
@@ -326,16 +274,34 @@ void TestingSwapChainVk::NativeDrawCompareWithSnapshot(ITexture* pTexture)
     vkEndCommandBuffer(vkCmdBuffer);
 
     pEnv->SubmitCommandBuffer(vkCmdBuffer);
-
     VERIFY_EXPR(m_StagingBufferSize == m_SwapChainDesc.Width * m_SwapChainDesc.Height * 4);
-
     void* pStagingDataPtr = nullptr;
     vkMapMemory(m_vkDevice, m_vkStagingBufferMemory, 0, m_StagingBufferSize, 0, &pStagingDataPtr);
 
-    CompareTestImages(m_ReferenceData.data(), m_ReferenceDataPitch, static_cast<const Uint8*>(pStagingDataPtr), m_SwapChainDesc.Width * 4,
-                      m_SwapChainDesc.Width, m_SwapChainDesc.Height, m_SwapChainDesc.ColorBufferFormat, m_FailureCounters);
+    callback(reinterpret_cast<const Uint8*>(pStagingDataPtr), m_SwapChainDesc.Width * 4, m_SwapChainDesc.Width, m_SwapChainDesc.Height, m_SwapChainDesc.ColorBufferFormat);
 
     vkUnmapMemory(m_vkDevice, m_vkStagingBufferMemory);
+}
+
+void TestingSwapChainVk::TakeSnapshot(ITexture* pCopyFrom)
+{
+    DumpVkImage(pCopyFrom, [this](const Uint8* pPixels, Uint64 PixelsStride, Uint32 Width, Uint32 Height, TEXTURE_FORMAT Format) {
+        m_ReferenceDataPitch = PixelsStride;
+        m_ReferenceData.resize(Height * PixelsStride);
+        for (Uint32 row = 0; row < Height; ++row)
+        {
+            memcpy(&m_ReferenceData[row * m_ReferenceDataPitch],
+                   pPixels + m_SwapChainDesc.Width * 4 * row,
+                   m_ReferenceDataPitch);
+        }
+    });
+}
+
+void TestingSwapChainVk::NativeDrawCompareWithSnapshot(ITexture* pTexture)
+{
+    DumpVkImage(pTexture, [this](const Uint8* pPixels, Uint64 PixelsStride, Uint32 Width, Uint32 Height, TEXTURE_FORMAT Format) {
+        CompareTestImages(m_ReferenceData.data(), m_ReferenceDataPitch, pPixels, PixelsStride, Width, Height, Format, m_FailureCounters);
+    });
 }
 
 void CreateTestingSwapChainVk(TestingEnvironmentVk* pEnv,
