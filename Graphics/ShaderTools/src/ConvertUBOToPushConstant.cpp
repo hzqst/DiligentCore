@@ -385,6 +385,7 @@ private:
 
         if (new_result_type_id == 0)
             return;
+
         // If a new type was created, ensure it's properly positioned in the types section.
         // FindPointerToType may append new types at the end, but they need to appear
         // before any instructions that use them (SPIR-V SSA requirement).

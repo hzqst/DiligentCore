@@ -29,6 +29,8 @@
 
 #include "DeviceContextVk.h"
 #include "RenderDeviceVk.h"
+#include "TextureVk.h"
+
 
 #include "GLSLangUtils.hpp"
 #include "DXCompiler.hpp"
@@ -40,6 +42,8 @@
 
 namespace Diligent
 {
+
+VkFormat TexFormatToVkFormat(TEXTURE_FORMAT TexFmt);
 
 namespace Testing
 {
@@ -329,17 +333,20 @@ void CompileSPIRV(const std::string&         ShaderSource,
 class PatchedPushConstantsRenderer
 {
 public:
-    PatchedPushConstantsRenderer(ISwapChain*                  pSwapChain,
-                                 VkRenderPass                 vkRenderPass,
+    PatchedPushConstantsRenderer(TestingSwapChainVk*          pSwapChain,
                                  const std::vector<uint32_t>& VS_SPIRV,
                                  const std::vector<uint32_t>& FS_SPIRV,
                                  uint32_t                     PushConstantSize,
                                  VkShaderStageFlags           PushConstantStages = VK_SHADER_STAGE_FRAGMENT_BIT)
     {
+        m_pSwapChain = pSwapChain;
+
         auto* pEnv = TestingEnvironmentVk::GetInstance();
         m_vkDevice = pEnv->GetVkDevice();
 
         const auto& SCDesc = pSwapChain->GetDesc();
+
+        CreateRenderPass();
 
         // Create shader modules from SPIR-V
         m_vkVSModule = CreateVkShaderModuleFromSPIRV(m_vkDevice, VS_SPIRV);
@@ -459,7 +466,7 @@ public:
         DynamicStateCI.sType                            = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
         PipelineCI.pDynamicState                        = &DynamicStateCI;
 
-        PipelineCI.renderPass         = vkRenderPass;
+        PipelineCI.renderPass         = m_vkRenderPass;
         PipelineCI.subpass            = 0;
         PipelineCI.basePipelineHandle = VK_NULL_HANDLE;
         PipelineCI.basePipelineIndex  = 0;
@@ -469,6 +476,152 @@ public:
         VERIFY_EXPR(m_vkPipeline != VK_NULL_HANDLE);
 
         m_PushConstantStages = PushConstantStages;
+
+        CreateFramebuffer();
+    }
+
+    void CreateRenderPass()
+    {
+        VkFormat ColorFormat = TexFormatToVkFormat(m_pSwapChain->GetCurrentBackBufferRTV()->GetDesc().Format);
+        VkFormat DepthFormat = TexFormatToVkFormat(m_pSwapChain->GetDepthBufferDSV()->GetDesc().Format);
+
+        std::array<VkAttachmentDescription, MAX_RENDER_TARGETS + 1> Attachments;
+        std::array<VkAttachmentReference, MAX_RENDER_TARGETS + 1>   AttachmentReferences;
+
+        VkSubpassDescription Subpass;
+
+        VkRenderPassCreateInfo RenderPassCI =
+            TestingEnvironmentVk::GetRenderPassCreateInfo(1, &ColorFormat, DepthFormat, 1,
+                                                          VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_LOAD_OP_CLEAR,
+                                                          Attachments, AttachmentReferences, Subpass);
+        VkResult res = vkCreateRenderPass(m_vkDevice, &RenderPassCI, nullptr, &m_vkRenderPass);
+        VERIFY_EXPR(res >= 0);
+        (void)res;
+    }
+
+    void CreateFramebuffer()
+    {
+        // Use Diligent Engine managed images (different from TestingSwapChainVk's internal images).
+        // The test compares rendering to Diligent Engine images against TestingSwapChainVk's internal images.
+        m_vkRenderTargetImage = (VkImage)m_pSwapChain->GetCurrentBackBufferRTV()->GetTexture()->GetNativeHandle();
+        m_vkDepthBufferImage  = (VkImage)m_pSwapChain->GetDepthBufferDSV()->GetTexture()->GetNativeHandle();
+
+        VkFormat ColorFormat = TexFormatToVkFormat(m_pSwapChain->GetCurrentBackBufferRTV()->GetDesc().Format);
+        VkFormat DepthFormat = TexFormatToVkFormat(m_pSwapChain->GetDepthBufferDSV()->GetDesc().Format);
+
+        {
+            VkImageViewCreateInfo ImageViewCI = {};
+
+            ImageViewCI.sType        = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            ImageViewCI.pNext        = nullptr;
+            ImageViewCI.flags        = 0; // reserved for future use.
+            ImageViewCI.image        = m_vkRenderTargetImage;
+            ImageViewCI.format       = ColorFormat;
+            ImageViewCI.viewType     = VK_IMAGE_VIEW_TYPE_2D;
+            ImageViewCI.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+            ImageViewCI.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+            ImageViewCI.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+            ImageViewCI.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+            ImageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            ImageViewCI.subresourceRange.levelCount = 1;
+            ImageViewCI.subresourceRange.layerCount = 1;
+
+            VkResult res = vkCreateImageView(m_vkDevice, &ImageViewCI, nullptr, &m_vkRenderTargetView);
+            VERIFY_EXPR(res >= 0);
+
+            ImageViewCI.image                       = m_vkDepthBufferImage;
+            ImageViewCI.format                      = DepthFormat;
+            ImageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+            res = vkCreateImageView(m_vkDevice, &ImageViewCI, nullptr, &m_vkDepthBufferView);
+            VERIFY_EXPR(res >= 0);
+        }
+
+        {
+            VkFramebufferCreateInfo FramebufferCI = {};
+
+            FramebufferCI.sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+            FramebufferCI.pNext           = nullptr;
+            FramebufferCI.flags           = 0; // reserved for future use
+            FramebufferCI.renderPass      = m_vkRenderPass;
+            FramebufferCI.attachmentCount = 2;
+            VkImageView Attachments[2]    = {m_vkDepthBufferView, m_vkRenderTargetView};
+            FramebufferCI.pAttachments    = Attachments;
+            FramebufferCI.width           = m_pSwapChain->GetDesc().Width;
+            FramebufferCI.height          = m_pSwapChain->GetDesc().Height;
+            FramebufferCI.layers          = 1;
+
+            VkResult res = vkCreateFramebuffer(m_vkDevice, &FramebufferCI, nullptr, &m_vkFramebuffer);
+            VERIFY_EXPR(res >= 0);
+            (void)res;
+        }
+    }
+
+    void BeginRenderPass(VkCommandBuffer vkCmdBuffer)
+    {
+        // Manually transition Diligent Engine managed images to the required layouts.
+        // We cannot use TestingSwapChainVk::TransitionRenderTarget/TransitionDepthBuffer
+        // because they operate on TestingSwapChainVk's internal images, not the Diligent Engine images.
+        VkImageMemoryBarrier ImageBarriers[2] = {};
+
+        // Render target barrier: UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL
+        ImageBarriers[0].sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        ImageBarriers[0].srcAccessMask                   = 0;
+        ImageBarriers[0].dstAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        ImageBarriers[0].oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
+        ImageBarriers[0].newLayout                       = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        ImageBarriers[0].srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        ImageBarriers[0].dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        ImageBarriers[0].image                           = m_vkRenderTargetImage;
+        ImageBarriers[0].subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        ImageBarriers[0].subresourceRange.baseMipLevel   = 0;
+        ImageBarriers[0].subresourceRange.levelCount     = 1;
+        ImageBarriers[0].subresourceRange.baseArrayLayer = 0;
+        ImageBarriers[0].subresourceRange.layerCount     = 1;
+
+        // Depth buffer barrier: UNDEFINED -> DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+        ImageBarriers[1].sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        ImageBarriers[1].srcAccessMask                   = 0;
+        ImageBarriers[1].dstAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        ImageBarriers[1].oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
+        ImageBarriers[1].newLayout                       = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        ImageBarriers[1].srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        ImageBarriers[1].dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        ImageBarriers[1].image                           = m_vkDepthBufferImage;
+        ImageBarriers[1].subresourceRange.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT;
+        ImageBarriers[1].subresourceRange.baseMipLevel   = 0;
+        ImageBarriers[1].subresourceRange.levelCount     = 1;
+        ImageBarriers[1].subresourceRange.baseArrayLayer = 0;
+        ImageBarriers[1].subresourceRange.layerCount     = 1;
+
+        vkCmdPipelineBarrier(vkCmdBuffer,
+                             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                             0,
+                             0, nullptr,
+                             0, nullptr,
+                             2, ImageBarriers);
+
+        VkRenderPassBeginInfo BeginInfo = {};
+
+        BeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        BeginInfo.renderPass        = m_vkRenderPass;
+        BeginInfo.framebuffer       = m_vkFramebuffer;
+        BeginInfo.renderArea.extent = VkExtent2D{m_pSwapChain->GetDesc().Width, m_pSwapChain->GetDesc().Height};
+
+        VkClearValue ClearValues[2] = {};
+
+        ClearValues[0].depthStencil.depth = 1;
+        ClearValues[1].color.float32[0]   = 0;
+        ClearValues[1].color.float32[1]   = 0;
+        ClearValues[1].color.float32[2]   = 0;
+        ClearValues[1].color.float32[3]   = 0;
+
+        BeginInfo.clearValueCount = 2;
+        BeginInfo.pClearValues    = ClearValues;
+
+        vkCmdBeginRenderPass(vkCmdBuffer, &BeginInfo, VK_SUBPASS_CONTENTS_INLINE);
     }
 
     void Draw(VkCommandBuffer vkCmdBuffer, const void* pPushConstantData, uint32_t PushConstantSize)
@@ -478,21 +631,37 @@ public:
         vkCmdDraw(vkCmdBuffer, 6, 1, 0, 0);
     }
 
+    void EndRenderPass(VkCommandBuffer vkCmdBuffer)
+    {
+        vkCmdEndRenderPass(vkCmdBuffer);
+    }
+
     ~PatchedPushConstantsRenderer()
     {
         vkDestroyPipeline(m_vkDevice, m_vkPipeline, nullptr);
         vkDestroyPipelineLayout(m_vkDevice, m_vkLayout, nullptr);
         vkDestroyShaderModule(m_vkDevice, m_vkVSModule, nullptr);
         vkDestroyShaderModule(m_vkDevice, m_vkFSModule, nullptr);
+        vkDestroyRenderPass(m_vkDevice, m_vkRenderPass, nullptr);
+        vkDestroyFramebuffer(m_vkDevice, m_vkFramebuffer, nullptr);
+        vkDestroyImageView(m_vkDevice, m_vkDepthBufferView, nullptr);
+        vkDestroyImageView(m_vkDevice, m_vkRenderTargetView, nullptr);
     }
 
 private:
-    VkDevice           m_vkDevice           = VK_NULL_HANDLE;
-    VkShaderModule     m_vkVSModule         = VK_NULL_HANDLE;
-    VkShaderModule     m_vkFSModule         = VK_NULL_HANDLE;
-    VkPipeline         m_vkPipeline         = VK_NULL_HANDLE;
-    VkPipelineLayout   m_vkLayout           = VK_NULL_HANDLE;
-    VkShaderStageFlags m_PushConstantStages = 0;
+    TestingSwapChainVk* m_pSwapChain          = nullptr;
+    VkDevice            m_vkDevice            = VK_NULL_HANDLE;
+    VkShaderModule      m_vkVSModule          = VK_NULL_HANDLE;
+    VkShaderModule      m_vkFSModule          = VK_NULL_HANDLE;
+    VkPipeline          m_vkPipeline          = VK_NULL_HANDLE;
+    VkPipelineLayout    m_vkLayout            = VK_NULL_HANDLE;
+    VkRenderPass        m_vkRenderPass        = VK_NULL_HANDLE;
+    VkFramebuffer       m_vkFramebuffer       = VK_NULL_HANDLE;
+    VkImage             m_vkRenderTargetImage = VK_NULL_HANDLE; // Diligent Engine managed render target
+    VkImage             m_vkDepthBufferImage  = VK_NULL_HANDLE; // Diligent Engine managed depth buffer
+    VkImageView         m_vkRenderTargetView  = VK_NULL_HANDLE;
+    VkImageView         m_vkDepthBufferView   = VK_NULL_HANDLE;
+    VkShaderStageFlags  m_PushConstantStages  = 0;
 };
 
 // Test helper that runs the full test flow
@@ -569,37 +738,51 @@ void RunConvertUBOToPushConstantsTest(SHADER_COMPILER Compiler, SHADER_SOURCE_LA
         FS_SPIRV_Patched                           = OptimizeSPIRV(FS_SPIRV_Patched, SPV_ENV_MAX, OptimizationFlags);
     }
 
-    // Step 4: Create renderer with patched shaders
-    PatchedPushConstantsRenderer Renderer{
-        pSwapChain,
-        pTestingSwapChainVk->GetRenderPass(),
-        VS_SPIRV,
-        FS_SPIRV_Patched,
-        sizeof(PushConstantData),
-        VK_SHADER_STAGE_FRAGMENT_BIT};
+    // Step 4: Render with push constants
+    {
+        PatchedPushConstantsRenderer Renderer{
+            pTestingSwapChainVk,
+            VS_SPIRV,
+            FS_SPIRV_Patched,
+            sizeof(PushConstantData),
+            VK_SHADER_STAGE_FRAGMENT_BIT};
 
-    // Step 5: Render with push constants
-    VkCommandBuffer vkCmdBuffer = pEnv->AllocateCommandBuffer();
+        VkCommandBuffer vkCmdBuffer = pEnv->AllocateCommandBuffer();
 
-    pTestingSwapChainVk->BeginRenderPass(vkCmdBuffer,
-                                         VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                                         ClearColor);
+        Renderer.BeginRenderPass(vkCmdBuffer);
 
-    // Set push constant data - Factor = (1,1,1,1) to make output identical to reference
-    PushConstantData PushData = {};
-    PushData.Factor[0]        = 1.0f;
-    PushData.Factor[1]        = 1.0f;
-    PushData.Factor[2]        = 1.0f;
-    PushData.Factor[3]        = 1.0f;
+        // Set push constant data - Factor = (1,1,1,1) to make output identical to reference
+        PushConstantData PushData = {};
+        PushData.Factor[0]        = 1.0f;
+        PushData.Factor[1]        = 1.0f;
+        PushData.Factor[2]        = 1.0f;
+        PushData.Factor[3]        = 1.0f;
 
-    Renderer.Draw(vkCmdBuffer, &PushData, sizeof(PushData));
+        Renderer.Draw(vkCmdBuffer, &PushData, sizeof(PushData));
 
-    pTestingSwapChainVk->EndRenderPass(vkCmdBuffer);
-    vkEndCommandBuffer(vkCmdBuffer);
-    pEnv->SubmitCommandBuffer(vkCmdBuffer, true);
+        Renderer.EndRenderPass(vkCmdBuffer);
 
-    // Step 6: Comparison native draw image with ref snapshot
-    pTestingSwapChainVk->NativeDrawCompareWithSnapshot(nullptr);
+        vkEndCommandBuffer(vkCmdBuffer);
+
+        pEnv->SubmitCommandBuffer(vkCmdBuffer, true);
+    }
+
+    // Sync Diligent Engine's internal layout tracking with the actual image layouts.
+    // After our native Vulkan rendering, the images are in COLOR_ATTACHMENT_OPTIMAL
+    // and DEPTH_STENCIL_ATTACHMENT_OPTIMAL layouts, but Diligent Engine doesn't know this.
+    // We need to update the tracked layouts so that CompareWithSnapshot() can correctly
+    // transition the images for the copy operation.
+    {
+        RefCntAutoPtr<ITextureVk> pRenderTargetVk{pTestingSwapChainVk->GetCurrentBackBufferRTV()->GetTexture(), IID_TextureVk};
+        RefCntAutoPtr<ITextureVk> pDepthBufferVk{pTestingSwapChainVk->GetDepthBufferDSV()->GetTexture(), IID_TextureVk};
+        if (pRenderTargetVk)
+            pRenderTargetVk->SetLayout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        if (pDepthBufferVk)
+            pDepthBufferVk->SetLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+    }
+
+    // Step 5: Comparison native draw image with ref snapshot
+    pTestingSwapChainVk->Present();
 }
 
 } // namespace
