@@ -1271,15 +1271,9 @@ void PipelineResourceSignatureVkImpl::UpdateInlineConstantBuffers(const ShaderRe
         const void*                          pInlineConstantData = ResourceCache.GetInlineConstantData(Attr.DescrSet, CacheOffset);
         VERIFY_EXPR(pInlineConstantData != nullptr);
 
-        // Check if this inline constant is selected as push constant by the PSO
+        // Skip push constants - they are handled directly by CommitPushConstants
         if (InlineCBAttr.ResIndex == PushConstantResIndex)
-        {
-            // This inline constant is selected as push constant at PSO level
-            // Copy data to the device context's push constants buffer
-            // This will be submitted via vkCmdPushConstants before draw/dispatch
-            Ctx.SetPushConstants(pInlineConstantData, 0, DataSize);
             continue;
-        }
 
         // For emulated inline constants, get the shared buffer from the Signature
         // All SRBs share this buffer (similar to D3D11 backend)
@@ -1294,6 +1288,23 @@ void PipelineResourceSignatureVkImpl::UpdateInlineConstantBuffers(const ShaderRe
             Ctx.UnmapBuffer(pBuffer, MAP_WRITE);
         }
     }
+}
+
+const void* PipelineResourceSignatureVkImpl::GetPushConstantData(const ShaderResourceCacheVk& ResourceCache, Uint32 ResIndex) const
+{
+    // Find the inline constant buffer with the specified resource index
+    for (Uint32 i = 0; i < m_NumInlineConstantBufferAttribs; ++i)
+    {
+        const InlineConstantBufferAttribsVk& InlineCBAttr = m_InlineConstantBufferAttribs[i];
+        if (InlineCBAttr.ResIndex == ResIndex)
+        {
+            const ResourceCacheContentType CacheType   = ResourceCache.GetContentType();
+            const ResourceAttribs&         Attr        = GetResourceAttribs(InlineCBAttr.ResIndex);
+            const Uint32                   CacheOffset = Attr.CacheOffset(CacheType);
+            return ResourceCache.GetInlineConstantData(Attr.DescrSet, CacheOffset);
+        }
+    }
+    return nullptr;
 }
 
 } // namespace Diligent

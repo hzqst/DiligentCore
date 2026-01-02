@@ -390,16 +390,6 @@ void DeviceContextVkImpl::SetPipelineState(IPipelineState* pPipelineState)
 
     // Reserve space to store all dynamic buffer offsets
     m_DynamicBufferOffsets.resize(TotalDynamicOffsetCount);
-
-    // Mark push constants as dirty when PSO changes, since the new PSO might have
-    // a different pipeline layout. If the new PSO has push constants, they need to
-    // be re-committed even if the data hasn't changed.
-    if (Layout.HasPushConstants())
-    {
-        m_State.PushConstantsDirty = true;
-        // Ensure we have initialized push constants data for the new PSO
-        // (user should call SetPushConstants before draw/dispatch)
-    }
 }
 
 DeviceContextVkImpl::ResourceBindInfo& DeviceContextVkImpl::GetBindInfo(PIPELINE_TYPE Type)
@@ -460,53 +450,44 @@ void DeviceContextVkImpl::UpdateInlineConstantBuffers(ResourceBindInfo& BindInfo
     }
 }
 
-void DeviceContextVkImpl::SetPushConstants(const void* pData, Uint32 Offset, Uint32 Size)
+void DeviceContextVkImpl::CommitPushConstants(ResourceBindInfo& BindInfo)
 {
-    DEV_CHECK_ERR(pData != nullptr || Size == 0, "pData must not be null when Size is non-zero");
-    DEV_CHECK_ERR(Offset + Size <= (DILIGENT_MAX_INLINE_CONSTANTS * sizeof(Uint32)),
-                  "Push constant data range [", Offset, ", ", Offset + Size, ") exceeds the maximum supported size (", (DILIGENT_MAX_INLINE_CONSTANTS * sizeof(Uint32)), ")");
-
-    // Note: This function may be called from UpdateInlineConstantBuffers during draw preparation,
-    // at which point the pipeline state is guaranteed to be bound. When called from user code,
-    // we validate that the pipeline has push constants.
-    if (m_pPipelineState != nullptr)
-    {
-        const PipelineLayoutVk& Layout = m_pPipelineState->GetPipelineLayout();
-        if (Layout.HasPushConstants())
-        {
-            DEV_CHECK_ERR(Offset + Size <= Layout.GetPushConstantSize(),
-                          "Push constant data range [", Offset, ", ", Offset + Size, ") exceeds the push constant block size (", Layout.GetPushConstantSize(), ")");
-        }
-    }
-    else
-    {
-        DEV_ERROR("A valid PipelineState must be bound before calling SetPushConstants!");
-    }
-
-    memcpy(m_PushConstantsData.data() + Offset, pData, Size);
-    m_PushConstantsDataSize    = std::max(m_PushConstantsDataSize, Offset + Size);
-    m_State.PushConstantsDirty = true;
-}
-
-void DeviceContextVkImpl::CommitPushConstants()
-{
-    if (!m_State.PushConstantsDirty)
-        return;
-
     VERIFY_EXPR(m_pPipelineState != nullptr);
     const PipelineLayoutVk& Layout = m_pPipelineState->GetPipelineLayout();
 
     if (!Layout.HasPushConstants())
         return;
 
+    const Uint32 PushConstSignIdx = Layout.GetPushConstantSignatureIndex();
+    const Uint32 PushConstResIdx  = Layout.GetPushConstantResourceIndex();
+
+    VERIFY_EXPR(PushConstSignIdx != INVALID_PUSH_CONSTANT_INDEX);
+    VERIFY_EXPR(PushConstResIdx != INVALID_PUSH_CONSTANT_INDEX);
+
+    const PipelineResourceSignatureVkImpl* pSign = m_pPipelineState->GetResourceSignature(PushConstSignIdx);
+    VERIFY_EXPR(pSign != nullptr);
+
+    const ShaderResourceCacheVk* pResourceCache = BindInfo.ResourceCaches[PushConstSignIdx];
+    if (pResourceCache == nullptr)
+    {
+        DEV_CHECK_ERR(false, "Signature '", pSign->GetDesc().Name, "' has push constants but no SRB is bound. "
+                                                                   "Did you call CommitShaderResources()?");
+        return;
+    }
+
+    // Get inline constant data directly from the resource cache
+    const void* pPushConstantData = pSign->GetPushConstantData(*pResourceCache, PushConstResIdx);
+    if (pPushConstantData == nullptr)
+    {
+        DEV_CHECK_ERR(false, "Push constant data is null in signature '", pSign->GetDesc().Name, "'");
+        return;
+    }
+
     const Uint32             Size       = Layout.GetPushConstantSize();
     const VkShaderStageFlags StageFlags = Layout.GetPushConstantStageFlags();
     const VkPipelineLayout   vkLayout   = Layout.GetVkPipelineLayout();
 
-    VERIFY_EXPR(Size <= m_PushConstantsData.size());
-
-    m_CommandBuffer.PushConstants(vkLayout, StageFlags, 0, Size, m_PushConstantsData.data());
-    m_State.PushConstantsDirty = false;
+    m_CommandBuffer.PushConstants(vkLayout, StageFlags, 0, Size, pPushConstantData);
 }
 
 void DeviceContextVkImpl::CommitDescriptorSets(ResourceBindInfo& BindInfo, Uint32 CommitSRBMask)
@@ -870,7 +851,7 @@ void DeviceContextVkImpl::PrepareForDraw(DRAW_FLAGS Flags)
 
     ResourceBindInfo& BindInfo = GetBindInfo(PIPELINE_TYPE_GRAPHICS);
 
-    // Update inline constant buffers before binding descriptor sets
+    // Update inline constant buffers (emulated path) before binding descriptor sets
     const bool DynamicBuffersIntact  = (Flags & DRAW_FLAG_DYNAMIC_RESOURCE_BUFFERS_INTACT) != 0;
     const bool InlineConstantsIntact = (Flags & DRAW_FLAG_INLINE_CONSTANTS_INTACT) != 0;
     if (!InlineConstantsIntact)
@@ -886,8 +867,10 @@ void DeviceContextVkImpl::PrepareForDraw(DRAW_FLAGS Flags)
         CommitDescriptorSets(BindInfo, CommitMask);
     }
 
-    // Commit push constants if dirty
-    CommitPushConstants();
+    // Commit push constants directly from SRB cache.
+    // Push constants are always submitted before draw (similar to D3D11/D3D12) because
+    // inline constants are designed to change every draw call.
+    CommitPushConstants(BindInfo);
 
 #ifdef DILIGENT_DEVELOPMENT
     // Must be called after CommitDescriptorSets as it needs SetInfo.BaseInd
@@ -1192,8 +1175,8 @@ void DeviceContextVkImpl::PrepareForDispatchCompute()
         CommitDescriptorSets(BindInfo, CommitMask);
     }
 
-    // Commit push constants if dirty
-    CommitPushConstants();
+    // Commit push constants directly from SRB cache
+    CommitPushConstants(BindInfo);
 
 #ifdef DILIGENT_DEVELOPMENT
     // Must be called after CommitDescriptorSets as it needs SetInfo.BaseInd
@@ -1215,8 +1198,8 @@ void DeviceContextVkImpl::PrepareForRayTracing()
         CommitDescriptorSets(BindInfo, CommitMask);
     }
 
-    // Commit push constants if dirty
-    CommitPushConstants();
+    // Commit push constants directly from SRB cache
+    CommitPushConstants(BindInfo);
 
 #ifdef DILIGENT_DEVELOPMENT
     // Must be called after CommitDescriptorSets as it needs SetInfo.BaseInd

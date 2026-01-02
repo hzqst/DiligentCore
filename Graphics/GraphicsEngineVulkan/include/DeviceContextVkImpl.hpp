@@ -374,8 +374,6 @@ public:
                              const Box&                     DstBox,
                              RESOURCE_STATE_TRANSITION_MODE TextureTransitionMode);
 
-    void SetPushConstants(const void* pData, Uint32 Offset, Uint32 Size);
-
     virtual void DILIGENT_CALL_TYPE GenerateMips(ITextureView* pTexView) override final;
 
     size_t GetNumCommandsInCtx() const { return m_State.NumCommands; }
@@ -516,17 +514,10 @@ private:
         /// Current graphics PSO uses no depth/render targets.
         bool NullRenderTargets = false;
 
-        /// Flag indicating if push constants have been updated since last draw/dispatch
-        bool PushConstantsDirty = false;
-
         Uint32 NumCommands = 0;
 
         VkPipelineBindPoint vkPipelineBindPoint = VK_PIPELINE_BIND_POINT_MAX_ENUM;
     } m_State;
-
-    // Push constants data storage
-    std::array<Uint8, DILIGENT_MAX_INLINE_CONSTANTS * sizeof(Uint32)> m_PushConstantsData     = {};
-    Uint32                                                            m_PushConstantsDataSize = 0; // Actual size of valid push constants data
 
     // Graphics/mesh, compute, ray tracing
     static constexpr Uint32 NUM_PIPELINE_BIND_POINTS = 3;
@@ -567,8 +558,8 @@ private:
 
     void UpdateInlineConstantBuffers(ResourceBindInfo& BindInfo);
 
-    // Commits push constants to the command buffer if they are dirty
-    void CommitPushConstants();
+    // Commits push constants to the command buffer directly from SRB cache
+    void CommitPushConstants(ResourceBindInfo& BindInfo);
 
 #ifdef DILIGENT_DEVELOPMENT
     void DvpValidateCommittedShaderResources(ResourceBindInfo& BindInfo);
