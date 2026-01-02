@@ -876,7 +876,7 @@ void PipelineStateVkImpl::ValidateShaderPushConstants(const TShaderStages& Shade
 void PipelineStateVkImpl::InitPipelineLayout(const PipelineStateCreateInfo& CreateInfo, TShaderStages& ShaderStages) noexcept(false)
 {
     // Fill Stage.ShaderResources with ShaderVkImpl::GetShaderResources if it was null.
-    // Stage.ShaderResources might be null when being async loaded from archiver.
+    // Stage.ShaderResources and pShader->GetShaderResources can be null when being async loaded from archiver.
     for (auto& Stage : ShaderStages)
     {
         for (size_t i = 0; i < Stage.Shaders.size(); ++i)
@@ -885,7 +885,14 @@ void PipelineStateVkImpl::InitPipelineLayout(const PipelineStateCreateInfo& Crea
 
             if (!Stage.ShaderResources[i] && !pShader->IsCompiling())
             {
-                Stage.ShaderResources[i] = pShader->GetShaderResources();
+                SPIRVShaderResources::CreateInfo ResCI;
+                ResCI.ShaderType                  = pShader->GetDesc().ShaderType;
+                ResCI.Name                        = pShader->GetDesc().Name;
+                ResCI.CombinedSamplerSuffix       = pShader->GetDesc().UseCombinedTextureSamplers ? pShader->GetDesc().CombinedSamplerSuffix : nullptr;
+                ResCI.LoadShaderStageInputs       = pShader->GetDesc().ShaderType == SHADER_TYPE_VERTEX;
+                ResCI.LoadUniformBufferReflection = true; //LoadConstantBufferReflection;
+
+                Stage.ShaderResources[i] = SPIRVShaderResources::Create(GetRawAllocator(), pShader->GetSPIRV(), ResCI);
             }
         }
     }
