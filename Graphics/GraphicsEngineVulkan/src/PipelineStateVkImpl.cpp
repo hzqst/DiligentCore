@@ -821,41 +821,18 @@ void PipelineStateVkImpl::RemapOrVerifyShaderResources(
     }
 }
 
-bool PipelineStateVkImpl::InitPushConstantInfoFromSignatures(PushConstantInfoVk& PushConstant,
-                                                             TShaderStages&      ShaderStages) const noexcept(false)
+void PipelineStateVkImpl::ValidateShaderPushConstants(const TShaderStages& ShaderStages) const noexcept(false)
 {
-    // Vulkan allows only one push constant range per pipeline layout.
-    // DiligentCore allows multiple inline constant resources, so we promote only the first inline constant
-    // from resource signatures to push constants. Other inline constants remain uniform buffers.
-    const PipelineResourceDesc* pResDesc            = nullptr;
-    const char*                 PushConstantName    = nullptr;
-    Uint32                      PushConstantSize    = 0;
-    Uint32                      PushConstantSignIdx = INVALID_PUSH_CONSTANT_INDEX;
-    Uint32                      PushConstantResIdx  = INVALID_PUSH_CONSTANT_INDEX;
+    const Uint32 PushConstantSignIdx = m_PipelineLayout.GetPushConstantSignatureIndex();
+    const Uint32 PushConstantResIdx  = m_PipelineLayout.GetPushConstantResourceIndex();
+    const Uint32 PushConstantSize    = m_PipelineLayout.GetPushConstantSize();
 
-    for (Uint32 s = 0; s < m_SignatureCount; ++s)
+    const char* PushConstantName = nullptr;
+    if (PushConstantSignIdx != INVALID_PUSH_CONSTANT_INDEX && PushConstantResIdx != INVALID_PUSH_CONSTANT_INDEX)
     {
-        const PipelineResourceSignatureVkImpl* pSignature = m_Signatures[s];
-        if (pSignature == nullptr)
-            continue;
-
-        for (Uint32 r = 0; r < pSignature->GetTotalResourceCount(); ++r)
-        {
-            const PipelineResourceDesc& ResDesc = pSignature->GetResourceDesc(r);
-            if ((ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS) == 0)
-                continue;
-
-            // For inline constants, ArraySize contains the number of 32-bit constants.
-            PushConstantSize    = ResDesc.ArraySize * sizeof(Uint32);
-            PushConstantSignIdx = s;
-            PushConstantResIdx  = r;
-            PushConstantName    = ResDesc.Name;
-            pResDesc            = &ResDesc;
-            break;
-        }
-
-        if (pResDesc != nullptr)
-            break;
+        const PipelineResourceSignatureVkImpl* pSignature = m_Signatures[PushConstantSignIdx];
+        if (pSignature != nullptr)
+            PushConstantName = pSignature->GetResourceDesc(PushConstantResIdx).Name;
     }
 
     // Validate shader-declared push constants against the selected inline constant (if any).
@@ -871,7 +848,7 @@ bool PipelineStateVkImpl::InitPushConstantInfoFromSignatures(PushConstantInfoVk&
             {
                 const SPIRVShaderResourceAttribs& PCAttribs = pShaderResources->GetPushConstant(pc);
 
-                if (pResDesc == nullptr)
+                if (PushConstantName == nullptr)
                 {
                     LOG_ERROR_AND_THROW("Shader '", pShader->GetDesc().Name, "' defines push constants block '", PCAttribs.Name,
                                         "', but the pipeline resource signatures define no inline constant resource to promote to push constants.");
@@ -893,24 +870,6 @@ bool PipelineStateVkImpl::InitPushConstantInfoFromSignatures(PushConstantInfoVk&
             }
         }
     }
-
-    if (pResDesc == nullptr)
-    {
-        // No inline constants found - PushConstant remains empty.
-        return false;
-    }
-
-    PushConstant.Size           = PushConstantSize;
-    PushConstant.SignatureIndex = PushConstantSignIdx;
-    PushConstant.ResourceIndex  = PushConstantResIdx;
-
-    for (SHADER_TYPE ShaderTypes = pResDesc->ShaderStages; ShaderTypes != SHADER_TYPE_UNKNOWN;)
-    {
-        const SHADER_TYPE ShaderType = ExtractLSB(ShaderTypes);
-        PushConstant.StageFlags |= ShaderTypeToVkShaderStageFlagBit(ShaderType);
-    }
-
-    return true;
 }
 
 void PipelineStateVkImpl::InitPipelineLayout(const PipelineStateCreateInfo& CreateInfo, TShaderStages& ShaderStages) noexcept(false)
@@ -927,16 +886,15 @@ void PipelineStateVkImpl::InitPipelineLayout(const PipelineStateCreateInfo& Crea
     DvpValidateResourceLimits();
 #endif
 
-    // Vulkan allows only one push constant block per pipeline, but it can be accessed from multiple shader stages.
-    // Promote the first inline constant from signatures to push constants (and validate any shader-declared push constants).
-    PushConstantInfoVk PushConstant;
-    InitPushConstantInfoFromSignatures(PushConstant, ShaderStages);
+    // Create the pipeline layout - this also extracts push constant info from signatures
+    m_PipelineLayout.Create(GetDevice(), m_Signatures, m_SignatureCount);
 
-    m_PipelineLayout.Create(GetDevice(), m_Signatures, m_SignatureCount, PushConstant);
+    // Validate shader-declared push constants against the selected inline constant (if any)
+    ValidateShaderPushConstants(ShaderStages);
 
     // If we promoted an inline constant as push constant (not an existing SPIR-V push constant),
     // convert the uniform buffer to push constant in SPIRV bytecode.
-    PatchShaderConvertUniformBufferToPushConstant(PushConstant, ShaderStages);
+    PatchShaderConvertUniformBufferToPushConstant(ShaderStages);
 
     const bool RemapResources = (CreateInfo.Flags & PSO_CREATE_FLAG_DONT_REMAP_SHADER_RESOURCES) == 0;
     const bool VerifyBindings = !RemapResources && ((InternalFlags & PSO_CREATE_INTERNAL_FLAG_NO_SHADER_REFLECTION) == 0);
@@ -964,20 +922,22 @@ void PipelineStateVkImpl::InitPipelineLayout(const PipelineStateCreateInfo& Crea
     }
 }
 
-void PipelineStateVkImpl::PatchShaderConvertUniformBufferToPushConstant(const PushConstantInfoVk& PushConstantInfo,
-                                                                        TShaderStages&            ShaderStages) const noexcept(false)
+void PipelineStateVkImpl::PatchShaderConvertUniformBufferToPushConstant(TShaderStages& ShaderStages) const noexcept(false)
 {
+    const Uint32 PushConstantSignIdx = m_PipelineLayout.GetPushConstantSignatureIndex();
+    const Uint32 PushConstantResIdx  = m_PipelineLayout.GetPushConstantResourceIndex();
+
     // If no push constant was selected, no patching needed
-    if (PushConstantInfo.SignatureIndex == INVALID_PUSH_CONSTANT_INDEX ||
-        PushConstantInfo.ResourceIndex == INVALID_PUSH_CONSTANT_INDEX)
+    if (PushConstantSignIdx == INVALID_PUSH_CONSTANT_INDEX ||
+        PushConstantResIdx == INVALID_PUSH_CONSTANT_INDEX)
         return;
 
     // Get the name of the selected push constant resource
-    const PipelineResourceSignatureVkImpl* pSignature = m_Signatures[PushConstantInfo.SignatureIndex];
+    const PipelineResourceSignatureVkImpl* pSignature = m_Signatures[PushConstantSignIdx];
     if (pSignature == nullptr)
         return;
 
-    const PipelineResourceDesc& ResDesc          = pSignature->GetResourceDesc(PushConstantInfo.ResourceIndex);
+    const PipelineResourceDesc& ResDesc          = pSignature->GetResourceDesc(PushConstantResIdx);
     const std::string           PushConstantName = ResDesc.Name;
 
     // For each shader stage, check if the uniform buffer needs to be patched

@@ -134,11 +134,9 @@ private:
     void InitializePipeline(const ComputePipelineStateCreateInfo& CreateInfo);
     void InitializePipeline(const RayTracingPipelineStateCreateInfo& CreateInfo);
 
-    bool InitPushConstantInfoFromSignatures(PushConstantInfoVk& PushConstant,
-                                            TShaderStages&      ShaderStages) const noexcept(false);
+    void ValidateShaderPushConstants(const TShaderStages& ShaderStages) const noexcept(false);
 
-    void PatchShaderConvertUniformBufferToPushConstant(const PushConstantInfoVk& PushConstant,
-                                                       TShaderStages&            ShaderStages) const noexcept(false);
+    void PatchShaderConvertUniformBufferToPushConstant(TShaderStages& ShaderStages) const noexcept(false);
 
     // TPipelineStateBase::Construct needs access to InitializePipeline
     friend TPipelineStateBase;

@@ -40,15 +40,6 @@ namespace Diligent
 class RenderDeviceVkImpl;
 class PipelineResourceSignatureVkImpl;
 
-/// Push constant information extracted from shaders or selected from inline constants
-struct PushConstantInfoVk
-{
-    VkShaderStageFlags StageFlags     = 0;
-    Uint32             Size           = 0;
-    Uint32             SignatureIndex = ~0u; // Index of the signature containing the push constant (~0u if none)
-    Uint32             ResourceIndex  = ~0u; // Resource index within the signature (~0u if none)
-};
-
 static constexpr Uint32 INVALID_PUSH_CONSTANT_INDEX = ~0u;
 
 /// Implementation of the Diligent::PipelineLayoutVk class
@@ -60,8 +51,7 @@ public:
 
     void Create(RenderDeviceVkImpl*                            pDeviceVk,
                 RefCntAutoPtr<PipelineResourceSignatureVkImpl> ppSignatures[],
-                Uint32                                         SignatureCount,
-                const PushConstantInfoVk&                      PushConstant = {}) noexcept(false);
+                Uint32                                         SignatureCount) noexcept(false);
     void Release(RenderDeviceVkImpl* pDeviceVkImpl, Uint64 CommandQueueMask);
 
     VkPipelineLayout GetVkPipelineLayout() const { return m_VkPipelineLayout; }
