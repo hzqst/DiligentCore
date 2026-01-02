@@ -109,12 +109,12 @@ void PipelineLayoutVk::Create(RenderDeviceVkImpl*                            pDe
                 const PipelineResourceDesc& ResDesc = pSignature->GetResourceDesc(r);
                 if (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
                 {
-                    pPushConstantResDesc         = &ResDesc;
-                    m_PushConstantSignatureIndex = BindInd;
-                    m_PushConstantResourceIndex  = r;
+                    pPushConstantResDesc = &ResDesc;
                     // For inline constants, ArraySize contains the number of 32-bit constants.
-                    m_PushConstantSize = ResDesc.ArraySize * sizeof(Uint32);
-                    m_PushConstantStageFlags = ShaderTypesToVkShaderStageFlags(ResDesc.ShaderStages);
+                    m_PushConstantInfo.Size           = ResDesc.ArraySize * sizeof(Uint32);
+                    m_PushConstantInfo.StageFlags     = ShaderTypesToVkShaderStageFlags(ResDesc.ShaderStages);
+                    m_PushConstantInfo.SignatureIndex = BindInd;
+                    m_PushConstantInfo.ResourceIndex  = r;
                     break;
                 }
             }
@@ -142,13 +142,10 @@ void PipelineLayoutVk::Create(RenderDeviceVkImpl*                            pDe
     }
 
     // Validate push constant size against device limits
-    if (m_PushConstantSize > 0)
+    if (m_PushConstantInfo.Size > Limits.maxPushConstantsSize)
     {
-        if (m_PushConstantSize > Limits.maxPushConstantsSize)
-        {
-            LOG_ERROR_AND_THROW("Push constant size (", m_PushConstantSize,
-                                " bytes) exceeds device limit (", Limits.maxPushConstantsSize, " bytes)");
-        }
+        LOG_ERROR_AND_THROW("Push constant size (", m_PushConstantInfo.Size,
+                            " bytes) exceeds device limit (", Limits.maxPushConstantsSize, " bytes)");
     }
 
     VERIFY(m_DescrSetCount <= std::numeric_limits<decltype(m_DescrSetCount)>::max(),
@@ -164,19 +161,14 @@ void PipelineLayoutVk::Create(RenderDeviceVkImpl*                            pDe
 
     // Set up push constant range if present
     VkPushConstantRange PushConstantRange = {};
-    if (m_PushConstantSize > 0 && m_PushConstantStageFlags != 0)
+    if (m_PushConstantInfo)
     {
-        PushConstantRange.stageFlags = m_PushConstantStageFlags;
+        PushConstantRange.stageFlags = m_PushConstantInfo.StageFlags;
         PushConstantRange.offset     = 0;
-        PushConstantRange.size       = m_PushConstantSize;
+        PushConstantRange.size       = m_PushConstantInfo.Size;
 
         PipelineLayoutCI.pushConstantRangeCount = 1;
         PipelineLayoutCI.pPushConstantRanges    = &PushConstantRange;
-    }
-    else
-    {
-        PipelineLayoutCI.pushConstantRangeCount = 0;
-        PipelineLayoutCI.pPushConstantRanges    = nullptr;
     }
 
     m_VkPipelineLayout = pDeviceVk->GetLogicalDevice().CreatePipelineLayout(PipelineLayoutCI);
