@@ -71,12 +71,6 @@ void PipelineLayoutVk::Create(RenderDeviceVkImpl*                            pDe
     Uint32 DynamicUniformBufferCount = 0;
     Uint32 DynamicStorageBufferCount = 0;
 
-    // Extract push constant info from signatures.
-    // Vulkan allows only one push constant range per pipeline layout.
-    // DiligentCore allows multiple inline constant resources, so we promote only the first inline constant
-    // from resource signatures to push constants. Other inline constants remain uniform buffers.
-    const PipelineResourceDesc* pPushConstantResDesc = nullptr;
-
     for (Uint32 BindInd = 0; BindInd < SignatureCount; ++BindInd)
     {
         // Signatures are arranged by binding index by PipelineStateBase::CopyResourceSignatures
