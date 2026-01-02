@@ -327,7 +327,7 @@ void PipelineResourceSignatureVkImpl::CreateSetLayouts(const bool IsSerialized)
                 {
                     BindingIndices[CacheGroup],
                     AssignedSamplerInd,
-                    ResDesc.ArraySize,
+                    ResDesc.GetArraySize(),
                     DescrType,
                     DSMapping[SetId],
                     pVkImmutableSamplers != nullptr,
@@ -341,8 +341,8 @@ void PipelineResourceSignatureVkImpl::CreateSetLayouts(const bool IsSerialized)
                           "Deserialized binding index (", pAttribs->BindingIndex, ") is invalid: ", BindingIndices[CacheGroup], " is expected.");
             DEV_CHECK_ERR(pAttribs->SamplerInd == AssignedSamplerInd,
                           "Deserialized sampler index (", pAttribs->SamplerInd, ") is invalid: ", AssignedSamplerInd, " is expected.");
-            DEV_CHECK_ERR(pAttribs->ArraySize == ResDesc.ArraySize,
-                          "Deserialized array size (", pAttribs->ArraySize, ") is invalid: ", ResDesc.ArraySize, " is expected.");
+            DEV_CHECK_ERR(pAttribs->ArraySize == ResDesc.GetArraySize(),
+                          "Deserialized array size (", pAttribs->ArraySize, ") is invalid: ", ResDesc.GetArraySize(), " is expected.");
             DEV_CHECK_ERR(pAttribs->GetDescriptorType() == DescrType, "Deserialized descriptor type is invalid");
             DEV_CHECK_ERR(pAttribs->DescrSet == DSMapping[SetId],
                           "Deserialized descriptor set (", pAttribs->DescrSet, ") is invalid: ", DSMapping[SetId], " is expected.");
