@@ -170,29 +170,12 @@ PipelineResourceSignatureVkImpl::PipelineResourceSignatureVkImpl(IReferenceCount
 
 void PipelineResourceSignatureVkImpl::CreateSetLayouts(const bool IsSerialized)
 {
-    // Initialize static resource cache first
-    if (GetNumStaticResStages() > 0)
-    {
-        Uint32 StaticResourceCount = 0; // The total number of static resources in all stages
-                                        // accounting for array sizes.
-        for (Uint32 i = 0; i < m_Desc.NumResources; ++i)
-        {
-            const PipelineResourceDesc& ResDesc = m_Desc.Resources[i];
-            if (ResDesc.VarType == SHADER_RESOURCE_VARIABLE_TYPE_STATIC)
-            {
-                // For inline constants, GetArraySize() returns 1 (actual array size),
-                // while ArraySize contains the number of 32-bit constants
-                StaticResourceCount += ResDesc.GetArraySize();
-            }
-        }
-        if (StaticResourceCount > 0)
-        {
-            m_pStaticResCache->InitializeSets(GetRawAllocator(), 1, &StaticResourceCount);
-        }
-    }
-
     CacheOffsetsType CacheGroupSizes = {}; // Required cache size for each cache group
     BindingCountType BindingCount    = {}; // Binding count in each cache group
+
+    // First pass: count resources and inline constants
+    Uint32 StaticResourceCount            = 0; // The total number of static resources in all stages
+    Uint32 TotalStaticInlineConstantBytes = 0; // Total bytes for static inline constants
     for (Uint32 i = 0; i < m_Desc.NumResources; ++i)
     {
         const PipelineResourceDesc& ResDesc    = m_Desc.Resources[i];
@@ -206,13 +189,29 @@ void PipelineResourceSignatureVkImpl::CreateSetLayouts(const bool IsSerialized)
         // while ArraySize contains the number of 32-bit constants.
         CacheGroupSizes[CacheGroup] += ResDesc.GetArraySize();
 
+        if (ResDesc.VarType == SHADER_RESOURCE_VARIABLE_TYPE_STATIC)
+        {
+            StaticResourceCount += ResDesc.GetArraySize();
+        }
+
         // Count inline constant buffers
         if (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
         {
             VERIFY(ResDesc.ResourceType == SHADER_RESOURCE_TYPE_CONSTANT_BUFFER,
                    "Only constant buffers can have INLINE_CONSTANTS flag");
             ++m_NumInlineConstantBufferAttribs;
+
+            if (ResDesc.VarType == SHADER_RESOURCE_VARIABLE_TYPE_STATIC)
+            {
+                TotalStaticInlineConstantBytes += ResDesc.ArraySize * sizeof(Uint32);
+            }
         }
+    }
+
+    // Initialize static resource cache (now that we know the inline constant size)
+    if (GetNumStaticResStages() > 0 && StaticResourceCount > 0)
+    {
+        m_pStaticResCache->InitializeSets(GetRawAllocator(), 1, &StaticResourceCount, TotalStaticInlineConstantBytes);
     }
 
     // Allocate inline constant buffer attributes array
@@ -549,49 +548,23 @@ void PipelineResourceSignatureVkImpl::CreateSetLayouts(const bool IsSerialized)
     }
 
     // Initialize inline constant buffers in the static resource cache
-    // This must be done after the resources are initialized above
+    // Memory was already allocated in InitializeSets above
     if (m_NumInlineConstantBufferAttribs > 0 && m_pStaticResCache != nullptr)
     {
-        // Calculate total memory size needed for all static inline constants
-        Uint32 TotalStaticInlineConstantSize = 0;
+        Uint32 InlineConstantOffset = 0;
         for (Uint32 i = 0; i < m_NumInlineConstantBufferAttribs; ++i)
         {
             const InlineConstantBufferAttribsVk& InlineCBAttr = m_InlineConstantBufferAttribs[i];
 
             const PipelineResourceDesc& ResDesc = GetResourceDesc(InlineCBAttr.ResIndex);
+            const ResourceAttribs&      Attr    = GetResourceAttribs(InlineCBAttr.ResIndex);
+
             if (ResDesc.VarType == SHADER_RESOURCE_VARIABLE_TYPE_STATIC)
             {
-                TotalStaticInlineConstantSize += InlineCBAttr.NumConstants * sizeof(Uint32);
-            }
-        }
-
-        // Allocate memory for all static inline constants in the static resource cache
-        // All inline constants use the same path - push constant selection is deferred to PSO creation
-        if (TotalStaticInlineConstantSize > 0)
-        {
-            IMemoryAllocator& Allocator          = GetRawAllocator();
-            void*             pInlineConstMemory = Allocator.Allocate(TotalStaticInlineConstantSize, "Static inline constant data", __FILE__, __LINE__);
-            memset(pInlineConstMemory, 0, TotalStaticInlineConstantSize);
-
-            // Pass ownership of the memory to the static resource cache for proper cleanup
-            m_pStaticResCache->SetInlineConstantMemory(Allocator, pInlineConstMemory);
-
-            // Assign memory to each static inline constant
-            Uint8* pCurrentDataPtr = static_cast<Uint8*>(pInlineConstMemory);
-            for (Uint32 i = 0; i < m_NumInlineConstantBufferAttribs; ++i)
-            {
-                const InlineConstantBufferAttribsVk& InlineCBAttr = m_InlineConstantBufferAttribs[i];
-
-                const PipelineResourceDesc& ResDesc = GetResourceDesc(InlineCBAttr.ResIndex);
-                const ResourceAttribs&      Attr    = GetResourceAttribs(InlineCBAttr.ResIndex);
-
-                if (ResDesc.VarType == SHADER_RESOURCE_VARIABLE_TYPE_STATIC)
-                {
-                    const Uint32 DataSize    = InlineCBAttr.NumConstants * sizeof(Uint32);
-                    const Uint32 CacheOffset = Attr.StaticCacheOffset;
-                    m_pStaticResCache->InitializeInlineConstantBuffer(0, CacheOffset, InlineCBAttr.NumConstants, pCurrentDataPtr);
-                    pCurrentDataPtr += DataSize;
-                }
+                const Uint32 DataSize    = InlineCBAttr.NumConstants * sizeof(Uint32);
+                const Uint32 CacheOffset = Attr.StaticCacheOffset;
+                m_pStaticResCache->InitializeInlineConstantBuffer(0, CacheOffset, InlineCBAttr.NumConstants, InlineConstantOffset);
+                InlineConstantOffset += DataSize;
             }
         }
     }
@@ -622,9 +595,6 @@ void PipelineResourceSignatureVkImpl::Destruct()
     }
     m_NumInlineConstantBufferAttribs = 0;
 
-    // Note: Static inline constant data is now managed by m_pStaticResCache
-    // and will be freed when the cache is destroyed
-
     TPipelineResourceSignatureBase::Destruct();
 }
 
@@ -636,8 +606,16 @@ void PipelineResourceSignatureVkImpl::InitSRBResourceCache(ShaderResourceCacheVk
         VERIFY_EXPR(m_DescriptorSetSizes[i] != ~0U);
 #endif
 
+    // Calculate total memory size for CPU staging data
+    Uint32 TotalInlineConstantBytes = 0;
+    for (Uint32 i = 0; i < m_NumInlineConstantBufferAttribs; ++i)
+    {
+        const InlineConstantBufferAttribsVk& InlineCBAttr = m_InlineConstantBufferAttribs[i];
+        TotalInlineConstantBytes += InlineCBAttr.NumConstants * sizeof(Uint32);
+    }
+
     IMemoryAllocator& CacheMemAllocator = m_SRBMemAllocator.GetResourceCacheDataAllocator(0);
-    ResourceCache.InitializeSets(CacheMemAllocator, NumSets, m_DescriptorSetSizes.data());
+    ResourceCache.InitializeSets(CacheMemAllocator, NumSets, m_DescriptorSetSizes.data(), TotalInlineConstantBytes);
 
     const Uint32                   TotalResources = GetTotalResourceCount();
     const ResourceCacheContentType CacheType      = ResourceCache.GetContentType();
@@ -652,7 +630,7 @@ void PipelineResourceSignatureVkImpl::InitSRBResourceCache(ShaderResourceCacheVk
                                           Attr.GetDescriptorType(), Attr.IsImmutableSamplerAssigned());
     }
 
-    // Initialize inline constant buffers - allocate staging memory and set up data pointers
+    // Initialize inline constant buffers - set up data pointers to the unified memory block
     // All inline constants use the emulated buffer path at PRS level.
     // Push constant selection is deferred to PSO creation time.
     // All SRBs share the same GPU buffer (stored in InlineConstantBufferAttribsVk::pBuffer),
@@ -663,28 +641,7 @@ void PipelineResourceSignatureVkImpl::InitSRBResourceCache(ShaderResourceCacheVk
         // updates emulated buffers even if no data has been written yet.
         ResourceCache.MarkHasInlineConstants();
 
-        // Calculate total memory size for CPU staging data
-        Uint32 TotalInlineConstantSize = 0;
-        for (Uint32 i = 0; i < m_NumInlineConstantBufferAttribs; ++i)
-        {
-            const InlineConstantBufferAttribsVk& InlineCBAttr = m_InlineConstantBufferAttribs[i];
-            TotalInlineConstantSize += InlineCBAttr.NumConstants * sizeof(Uint32);
-        }
-
-        // Allocate memory for all inline constants (CPU staging data)
-        // Each SRB has its own copy of the staging data, but shares the GPU buffer
-        void* pInlineConstantMemory = nullptr;
-        if (TotalInlineConstantSize > 0)
-        {
-            pInlineConstantMemory = CacheMemAllocator.Allocate(TotalInlineConstantSize, "Inline constant data", __FILE__, __LINE__);
-            memset(pInlineConstantMemory, 0, TotalInlineConstantSize);
-
-            // Pass ownership of the memory to the resource cache for proper cleanup
-            ResourceCache.SetInlineConstantMemory(CacheMemAllocator, pInlineConstantMemory);
-        }
-
-        // Assign staging memory to each inline constant buffer
-        Uint8* pCurrentDataPtr = static_cast<Uint8*>(pInlineConstantMemory);
+        Uint32 InlineConstantOffset = 0;
         for (Uint32 i = 0; i < m_NumInlineConstantBufferAttribs; ++i)
         {
             const InlineConstantBufferAttribsVk& InlineCBAttr = m_InlineConstantBufferAttribs[i];
@@ -694,8 +651,8 @@ void PipelineResourceSignatureVkImpl::InitSRBResourceCache(ShaderResourceCacheVk
             // Initialize staging memory in the resource cache
             // The GPU buffer is shared from InlineCBAttr.pBuffer (created in CreateSetLayouts)
             ResourceCache.InitializeInlineConstantBuffer(Attr.DescrSet, Attr.CacheOffset(CacheType),
-                                                         InlineCBAttr.NumConstants, pCurrentDataPtr);
-            pCurrentDataPtr += DataSize;
+                                                         InlineCBAttr.NumConstants, InlineConstantOffset);
+            InlineConstantOffset += DataSize;
         }
     }
 
