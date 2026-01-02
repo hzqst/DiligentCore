@@ -875,7 +875,7 @@ void PipelineStateVkImpl::ValidateShaderPushConstants(const TShaderStages& Shade
 
 void PipelineStateVkImpl::InitPipelineLayout(const PipelineStateCreateInfo& CreateInfo, TShaderStages& ShaderStages) noexcept(false)
 {
-    // Fill Stage.ShaderResources with ShaderVkImpl::GetShaderResources if it was null.
+    // Fill Stage.ShaderResources with SPIRVShaderResources::Create if it was null.
     // Stage.ShaderResources and pShader->GetShaderResources can be null when being async loaded from archiver.
     for (auto& Stage : ShaderStages)
     {

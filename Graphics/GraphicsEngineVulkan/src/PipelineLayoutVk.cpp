@@ -114,11 +114,7 @@ void PipelineLayoutVk::Create(RenderDeviceVkImpl*                            pDe
                     m_PushConstantResourceIndex  = r;
                     // For inline constants, ArraySize contains the number of 32-bit constants.
                     m_PushConstantSize = ResDesc.ArraySize * sizeof(Uint32);
-                    for (SHADER_TYPE ShaderTypes = ResDesc.ShaderStages; ShaderTypes != SHADER_TYPE_UNKNOWN;)
-                    {
-                        const SHADER_TYPE ShaderType = ExtractLSB(ShaderTypes);
-                        m_PushConstantStageFlags |= ShaderTypeToVkShaderStageFlagBit(ShaderType);
-                    }
+                    m_PushConstantStageFlags = ShaderTypesToVkShaderStageFlags(ResDesc.ShaderStages);
                     break;
                 }
             }
