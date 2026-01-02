@@ -603,7 +603,7 @@ PipelineResourceSignatureDescWrapper PipelineStateVkImpl::GetDefaultResourceSign
     {
         for (size_t i = 0; i < Stage.Shaders.size(); ++i)
         {
-            const ShaderVkImpl* pShader = Stage.Shaders[i];
+            const ShaderVkImpl*         pShader         = Stage.Shaders[i];
             const SPIRVShaderResources& ShaderResources = (*Stage.ShaderResources[i]);
 
             ShaderResources.ProcessResources(
@@ -877,12 +877,12 @@ void PipelineStateVkImpl::InitPipelineLayout(const PipelineStateCreateInfo& Crea
 {
     // Fill Stage.ShaderResources with ShaderVkImpl::GetShaderResources if it was null.
     // Stage.ShaderResources might be null when being async loaded from archiver.
-    for (auto &Stage : ShaderStages)
+    for (auto& Stage : ShaderStages)
     {
         for (size_t i = 0; i < Stage.Shaders.size(); ++i)
         {
             const ShaderVkImpl* pShader = Stage.Shaders[i];
-            
+
             if (!Stage.ShaderResources[i] && !pShader->IsCompiling())
             {
                 Stage.ShaderResources[i] = pShader->GetShaderResources();
@@ -1013,7 +1013,7 @@ void PipelineStateVkImpl::PatchShaderConvertUniformBufferToPushConstant(TShaderS
 
                 if (!PatchedSPIRV.empty())
                 {
-                    Stage.SPIRVs[i]          = PatchedSPIRV;
+                    Stage.SPIRVs[i] = PatchedSPIRV;
 
                     SPIRVShaderResources::CreateInfo ResCI;
                     ResCI.ShaderType                  = pShader->GetDesc().ShaderType;
