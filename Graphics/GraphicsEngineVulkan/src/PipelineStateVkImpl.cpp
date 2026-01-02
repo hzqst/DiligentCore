@@ -581,7 +581,7 @@ void PipelineStateVkImpl::ShaderStageInfo::Append(const ShaderVkImpl* pShader)
     }
     Shaders.push_back(pShader);
     SPIRVs.push_back(pShader->GetSPIRV());
-    ShaderResources.push_back(pShader->GetShaderResources());
+    ShaderResources.push_back(pShader->IsCompiling() ? nullptr : pShader->GetShaderResources());
 }
 
 size_t PipelineStateVkImpl::ShaderStageInfo::Count() const
@@ -601,9 +601,11 @@ PipelineResourceSignatureDescWrapper PipelineStateVkImpl::GetDefaultResourceSign
     std::unordered_map<ShaderResourceHashKey, const SPIRVShaderResourceAttribs&, ShaderResourceHashKey::Hasher> UniqueResources;
     for (const ShaderStageInfo& Stage : ShaderStages)
     {
-        for (const ShaderVkImpl* pShader : Stage.Shaders)
+        for (size_t i = 0; i < Stage.Shaders.size(); ++i)
         {
-            const SPIRVShaderResources& ShaderResources = *pShader->GetShaderResources();
+            const ShaderVkImpl* pShader = Stage.Shaders[i];
+            const SPIRVShaderResources& ShaderResources = (*Stage.ShaderResources[i]);
+
             ShaderResources.ProcessResources(
                 [&](const SPIRVShaderResourceAttribs& Attribs, Uint32) //
                 {
@@ -838,15 +840,14 @@ void PipelineStateVkImpl::ValidateShaderPushConstants(const TShaderStages& Shade
     // Validate shader-declared push constants against the selected inline constant (if any).
     for (const ShaderStageInfo& Stage : ShaderStages)
     {
-        for (const ShaderVkImpl* pShader : Stage.Shaders)
+        for (size_t i = 0; i < Stage.Shaders.size(); ++i)
         {
-            const auto& pShaderResources = pShader->GetShaderResources();
-            if (!pShaderResources)
-                continue;
+            const ShaderVkImpl*         pShader         = Stage.Shaders[i];
+            const SPIRVShaderResources& ShaderResources = (*Stage.ShaderResources[i]);
 
-            for (Uint32 pc = 0; pc < pShaderResources->GetNumPushConstants(); ++pc)
+            for (Uint32 pc = 0; pc < ShaderResources.GetNumPushConstants(); ++pc)
             {
-                const SPIRVShaderResourceAttribs& PCAttribs = pShaderResources->GetPushConstant(pc);
+                const SPIRVShaderResourceAttribs& PCAttribs = ShaderResources.GetPushConstant(pc);
 
                 if (PushConstantName == nullptr)
                 {
@@ -874,6 +875,21 @@ void PipelineStateVkImpl::ValidateShaderPushConstants(const TShaderStages& Shade
 
 void PipelineStateVkImpl::InitPipelineLayout(const PipelineStateCreateInfo& CreateInfo, TShaderStages& ShaderStages) noexcept(false)
 {
+    // Fill Stage.ShaderResources with ShaderVkImpl::GetShaderResources if it was null.
+    // Stage.ShaderResources might be null when being async loaded from archiver.
+    for (auto &Stage : ShaderStages)
+    {
+        for (size_t i = 0; i < Stage.Shaders.size(); ++i)
+        {
+            const ShaderVkImpl* pShader = Stage.Shaders[i];
+            
+            if (!Stage.ShaderResources[i] && !pShader->IsCompiling())
+            {
+                Stage.ShaderResources[i] = pShader->GetShaderResources();
+            }
+        }
+    }
+
     const PSO_CREATE_INTERNAL_FLAGS InternalFlags = GetInternalCreateFlags(CreateInfo);
     if (m_UsingImplicitSignature && (InternalFlags & PSO_CREATE_INTERNAL_FLAG_IMPLICIT_SIGNATURE0) == 0)
     {
