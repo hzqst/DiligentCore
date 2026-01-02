@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -353,6 +353,11 @@ void PipelineResourceSignatureVkImpl::CreateSetLayouts(const bool IsSerialized)
                           "Static cache offset is invalid.");
         }
 
+        // For inline constants, ArraySize holds the number of 4-byte constants
+        const Uint32 DescriptorCount = ResDesc.GetArraySize();
+
+        BindingIndices[CacheGroup] += 1;
+
         // All resources use descriptor sets - push constant selection is deferred to PSO creation
         // For inline constants, GetArraySize() returns 1 (actual array size for cache)
         CacheGroupOffsets[CacheGroup] += ResDesc.GetArraySize();
@@ -360,20 +365,19 @@ void PipelineResourceSignatureVkImpl::CreateSetLayouts(const bool IsSerialized)
         VkDescriptorSetLayoutBinding vkSetLayoutBinding{};
         vkSetLayoutBinding.binding = pAttribs->BindingIndex;
         // For inline constants, descriptor count is 1 (single uniform buffer)
-        vkSetLayoutBinding.descriptorCount    = ResDesc.GetArraySize();
+        vkSetLayoutBinding.descriptorCount    = DescriptorCount;
         vkSetLayoutBinding.stageFlags         = ShaderTypesToVkShaderStageFlags(ResDesc.ShaderStages);
         vkSetLayoutBinding.pImmutableSamplers = pVkImmutableSamplers;
         vkSetLayoutBinding.descriptorType     = DescriptorTypeToVkDescriptorType(pAttribs->GetDescriptorType());
         vkSetLayoutBindings[SetId].push_back(vkSetLayoutBinding);
-        BindingIndices[CacheGroup] += 1;
 
         if (ResDesc.VarType == SHADER_RESOURCE_VARIABLE_TYPE_STATIC)
         {
             VERIFY(pAttribs->DescrSet == 0, "Static resources must always be allocated in descriptor set 0");
             // For inline constants, GetArraySize() returns 1 (actual array size)
-            m_pStaticResCache->InitializeResources(pAttribs->DescrSet, StaticCacheOffset, ResDesc.GetArraySize(),
+            m_pStaticResCache->InitializeResources(pAttribs->DescrSet, StaticCacheOffset, DescriptorCount,
                                                    pAttribs->GetDescriptorType(), pAttribs->IsImmutableSamplerAssigned());
-            StaticCacheOffset += ResDesc.GetArraySize();
+            StaticCacheOffset += DescriptorCount;
         }
 
         // Handle inline constant buffers
@@ -426,7 +430,7 @@ void PipelineResourceSignatureVkImpl::CreateSetLayouts(const bool IsSerialized)
     VERIFY_EXPR(m_DynamicUniformBufferCount == CacheGroupSizes[CACHE_GROUP_DYN_UB_STAT_VAR] + CacheGroupSizes[CACHE_GROUP_DYN_UB_DYN_VAR]);
     VERIFY_EXPR(m_DynamicStorageBufferCount == CacheGroupSizes[CACHE_GROUP_DYN_SB_STAT_VAR] + CacheGroupSizes[CACHE_GROUP_DYN_SB_DYN_VAR]);
 
-    VERIFY_EXPR(m_pStaticResCache == nullptr || GetNumDescriptorSets() == 0 || const_cast<const ShaderResourceCacheVk*>(m_pStaticResCache)->GetDescriptorSet(0).GetSize() == StaticCacheOffset);
+    VERIFY_EXPR(m_pStaticResCache == nullptr || const_cast<const ShaderResourceCacheVk*>(m_pStaticResCache)->GetDescriptorSet(0).GetSize() == StaticCacheOffset);
     VERIFY_EXPR(CacheGroupOffsets[CACHE_GROUP_DYN_UB_STAT_VAR] == CacheGroupSizes[CACHE_GROUP_DYN_UB_STAT_VAR]);
     VERIFY_EXPR(CacheGroupOffsets[CACHE_GROUP_DYN_SB_STAT_VAR] == CacheGroupSizes[CACHE_GROUP_DYN_UB_STAT_VAR] + CacheGroupSizes[CACHE_GROUP_DYN_SB_STAT_VAR]);
     VERIFY_EXPR(CacheGroupOffsets[CACHE_GROUP_OTHER_STAT_VAR] == CacheGroupSizes[CACHE_GROUP_DYN_UB_STAT_VAR] + CacheGroupSizes[CACHE_GROUP_DYN_SB_STAT_VAR] + CacheGroupSizes[CACHE_GROUP_OTHER_STAT_VAR]);
@@ -732,10 +736,6 @@ void PipelineResourceSignatureVkImpl::CopyStaticResources(ShaderResourceCacheVk&
     if (!HasDescriptorSet(DESCRIPTOR_SET_ID_STATIC_MUTABLE) || m_pStaticResCache == nullptr)
         return;
 
-    if (m_pStaticResCache->GetNumDescriptorSets() == 0)
-        return;
-
-
     // SrcResourceCache contains only static resources.
     // In case of SRB, DstResourceCache contains static, mutable and dynamic resources.
     // In case of Signature, DstResourceCache contains only static resources.
@@ -774,8 +774,8 @@ void PipelineResourceSignatureVkImpl::CopyStaticResources(ShaderResourceCacheVk&
         }
 
         // For regular resources (not inline constants), iterate through array elements
-        const Uint32 ActualArraySize = ResDesc.GetArraySize();
-        for (Uint32 ArrInd = 0; ArrInd < ActualArraySize; ++ArrInd)
+
+        for (Uint32 ArrInd = 0; ArrInd < ResDesc.GetArraySize(); ++ArrInd)
         {
             const Uint32                           SrcCacheOffset = Attr.CacheOffset(SrcCacheType) + ArrInd;
             const ShaderResourceCacheVk::Resource& SrcCachedRes   = SrcDescrSet.GetResource(SrcCacheOffset);
@@ -872,16 +872,15 @@ void PipelineResourceSignatureVkImpl::CommitDynamicResources(const ShaderResourc
     for (Uint32 ResIdx = DynResIdxRange.first, ArrElem = 0; ResIdx < DynResIdxRange.second;)
     {
         const PipelineResourceAttribsType& Attr        = GetResourceAttribs(ResIdx);
-        const PipelineResourceDesc&        ResDesc     = GetResourceDesc(ResIdx);
         const Uint32                       CacheOffset = Attr.CacheOffset(CacheType);
-        // For inline constants, GetArraySize() returns 1 (actual array size for cache),
-        // while ArraySize contains the number of 32-bit constants
-        const Uint32         ArraySize = ResDesc.GetArraySize();
-        const DescriptorType DescrType = Attr.GetDescriptorType();
+        const Uint32                       ArraySize   = Attr.ArraySize;
+        const DescriptorType               DescrType   = Attr.GetDescriptorType();
 
 #ifdef DILIGENT_DEBUG
         {
-            VERIFY_EXPR(ResDesc.VarType == SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC);
+            const PipelineResourceDesc& Res = GetResourceDesc(ResIdx);
+            VERIFY_EXPR(ArraySize == GetResourceDesc(ResIdx).GetArraySize());
+            VERIFY_EXPR(Res.VarType == SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC);
         }
 #endif
 
