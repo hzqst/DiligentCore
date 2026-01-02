@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -101,15 +101,17 @@ void PipelineLayoutVk::Create(RenderDeviceVkImpl*                            pDe
         m_DbgMaxBindIndex = std::max(m_DbgMaxBindIndex, Uint32{pSignature->GetDesc().BindingIndex});
 #endif
 
-        // Find the first inline constant resource (only if not already found)
-        if (pPushConstantResDesc == nullptr)
+        // Vulkan allows only one push constant range per pipeline layout.
+        // Diligent API allows multiple inline constant resources, so we promote only the first inline constant
+        // from resource signatures to push constants. Other inline constants remain uniform buffers.
+        if (!m_PushConstantInfo && pSignature->HasInlineConstants())
         {
             for (Uint32 r = 0; r < pSignature->GetTotalResourceCount(); ++r)
             {
                 const PipelineResourceDesc& ResDesc = pSignature->GetResourceDesc(r);
                 if (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
                 {
-                    pPushConstantResDesc = &ResDesc;
+                    VERIFY_EXPR(ResDesc.ArraySize > 0);
                     // For inline constants, ArraySize contains the number of 32-bit constants.
                     m_PushConstantInfo.Size           = ResDesc.ArraySize * sizeof(Uint32);
                     m_PushConstantInfo.StageFlags     = ShaderTypesToVkShaderStageFlags(ResDesc.ShaderStages);
@@ -151,8 +153,7 @@ void PipelineLayoutVk::Create(RenderDeviceVkImpl*                            pDe
     VERIFY(m_DescrSetCount <= std::numeric_limits<decltype(m_DescrSetCount)>::max(),
            "Descriptor set count (", DescSetLayoutCount, ") exceeds the maximum representable value");
 
-    VkPipelineLayoutCreateInfo PipelineLayoutCI = {};
-
+    VkPipelineLayoutCreateInfo PipelineLayoutCI{};
     PipelineLayoutCI.sType          = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     PipelineLayoutCI.pNext          = nullptr;
     PipelineLayoutCI.flags          = 0; // reserved for future use
@@ -160,7 +161,7 @@ void PipelineLayoutVk::Create(RenderDeviceVkImpl*                            pDe
     PipelineLayoutCI.pSetLayouts    = DescSetLayoutCount ? DescSetLayouts.data() : nullptr;
 
     // Set up push constant range if present
-    VkPushConstantRange PushConstantRange = {};
+    VkPushConstantRange PushConstantRange{};
     if (m_PushConstantInfo)
     {
         PushConstantRange.stageFlags = m_PushConstantInfo.StageFlags;
@@ -169,6 +170,11 @@ void PipelineLayoutVk::Create(RenderDeviceVkImpl*                            pDe
 
         PipelineLayoutCI.pushConstantRangeCount = 1;
         PipelineLayoutCI.pPushConstantRanges    = &PushConstantRange;
+    }
+    else
+    {
+        PipelineLayoutCI.pushConstantRangeCount = 0;
+        PipelineLayoutCI.pPushConstantRanges    = nullptr;
     }
 
     m_VkPipelineLayout = pDeviceVk->GetLogicalDevice().CreatePipelineLayout(PipelineLayoutCI);

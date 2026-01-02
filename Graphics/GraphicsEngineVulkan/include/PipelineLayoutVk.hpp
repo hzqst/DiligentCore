@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -71,6 +71,15 @@ public:
         return m_FirstDescrSetIndex[Index];
     }
 
+    struct PushConstantInfo
+    {
+        Uint32             Size           = 0;
+        VkShaderStageFlags StageFlags     = 0;
+        Uint32             SignatureIndex = ~0u;
+        Uint32             ResourceIndex  = ~0u;
+
+        constexpr explicit operator bool() const { return Size != 0; }
+    };
     const PushConstantInfo& GetPushConstantInfo() const { return m_PushConstantInfo; }
 
 private:
