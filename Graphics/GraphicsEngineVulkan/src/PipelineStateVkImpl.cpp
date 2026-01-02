@@ -1038,7 +1038,15 @@ void PipelineStateVkImpl::PatchShaderConvertUniformBufferToPushConstant(const Pu
                 if (!PatchedSPIRV.empty())
                 {
                     Stage.SPIRVs[i]          = PatchedSPIRV;
-                    Stage.ShaderResources[i] = pShader->CreateSPIRVShaderResources(PatchedSPIRV);
+
+                    SPIRVShaderResources::CreateInfo ResCI;
+                    ResCI.ShaderType                  = pShader->GetDesc().ShaderType;
+                    ResCI.Name                        = pShader->GetDesc().Name;
+                    ResCI.CombinedSamplerSuffix       = pShader->GetDesc().UseCombinedTextureSamplers ? pShader->GetDesc().CombinedSamplerSuffix : nullptr;
+                    ResCI.LoadShaderStageInputs       = pShader->GetDesc().ShaderType == SHADER_TYPE_VERTEX;
+                    ResCI.LoadUniformBufferReflection = true; //LoadConstantBufferReflection;
+
+                    Stage.ShaderResources[i] = SPIRVShaderResources::Create(GetRawAllocator(), PatchedSPIRV, ResCI);
                 }
                 else
                 {
