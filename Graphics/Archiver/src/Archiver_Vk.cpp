@@ -177,6 +177,7 @@ void SerializedPipelineStateImpl::PatchShadersVk(const CreateInfoType& CreateInf
                                                           Signatures.data(),
                                                           SignaturesCount,
                                                           BindIndexToDescSetIndex,
+                                                          nullptr, // No push constant conversion in archiver
                                                           false, // bVerifyOnly
                                                           bStripReflection,
                                                           CreateInfo.PSODesc.Name);

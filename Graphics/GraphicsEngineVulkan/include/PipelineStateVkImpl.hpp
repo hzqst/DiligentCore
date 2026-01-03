@@ -115,6 +115,7 @@ public:
         const RefCntAutoPtr<PipelineResourceSignatureVkImpl> pSignatures[],
         Uint32                                               SignatureCount,
         const TBindIndexToDescSetIndex&                      BindIndexToDescSetIndex,
+        const PipelineLayoutVk::PushConstantInfo*            pPushConstantInfo,
         bool                                                 bVerifyOnly,
         bool                                                 bStripReflection,
         const char*                                          PipelineName,
@@ -139,10 +140,6 @@ private:
     void InitializePipeline(const GraphicsPipelineStateCreateInfo& CreateInfo);
     void InitializePipeline(const ComputePipelineStateCreateInfo& CreateInfo);
     void InitializePipeline(const RayTracingPipelineStateCreateInfo& CreateInfo);
-
-    void ValidateShaderPushConstants(const TShaderStages& ShaderStages) const noexcept(false);
-
-    void PatchShaderConvertUniformBufferToPushConstant(TShaderStages& ShaderStages) const noexcept(false);
 
     // TPipelineStateBase::Construct needs access to InitializePipeline
     friend TPipelineStateBase;
