@@ -694,10 +694,9 @@ void PipelineStateVkImpl::RemapOrVerifyShaderResources(
 
         for (ShaderStageInfo::Item& StageItem : Stage.Items)
         {
-            const ShaderVkImpl* const   pShader          = StageItem.pShader;
-            const char* const           ShaderName       = pShader->GetDesc().Name;
-            ShaderResourcesSharedPtr    pShaderResources = pShader->GetShaderResources();
-            std::vector<uint32_t>&      SPIRV            = StageItem.SPIRV;
+            const char* const        ShaderName       = StageItem.pShader->GetDesc().Name;
+            ShaderResourcesSharedPtr pShaderResources = StageItem.pShader->GetShaderResources();
+            std::vector<uint32_t>&   SPIRV            = StageItem.SPIRV;
 
             if (!pShaderResources)
             {
@@ -747,10 +746,11 @@ void PipelineStateVkImpl::RemapOrVerifyShaderResources(
 
                     // Recreate shader resources from the patched SPIRV
                     SPIRVShaderResources::CreateInfo ResCI;
-                    ResCI.ShaderType                  = pShader->GetDesc().ShaderType;
+                    ResCI.ShaderType                  = ShaderType;
                     ResCI.Name                        = ShaderName;
-                    ResCI.CombinedSamplerSuffix       = pShader->GetDesc().UseCombinedTextureSamplers ? pShader->GetDesc().CombinedSamplerSuffix : nullptr;
-                    ResCI.LoadShaderStageInputs       = pShader->GetDesc().ShaderType == SHADER_TYPE_VERTEX;
+                    ResCI.CombinedSamplerSuffix       = pShaderResources->GetCombinedSamplerSuffix();
+                    ResCI.LoadShaderStageInputs       = false; // Inputs have already been remapped
+                    ResCI.LoadUniformBufferReflection = pShaderResources->HasUniformBufferReflection();
 
                     pShaderResources = SPIRVShaderResources::Create(GetRawAllocator(), SPIRV, ResCI);
                 }
@@ -782,7 +782,7 @@ void PipelineStateVkImpl::RemapOrVerifyShaderResources(
                     // We cannot rely on SPIRVAttribs.Type == PushConstant because the SPIRV may have been patched
                     // but pShaderResources was not updated (when pDvpShaderResources is null).
                     const bool IsPushConstant = (pPushConstantInfo != nullptr && *pPushConstantInfo &&
-                                                ResAttribution.ResourceIndex == pPushConstantInfo->ResourceIndex &&
+                                                 ResAttribution.ResourceIndex == pPushConstantInfo->ResourceIndex &&
                                                  ResAttribution.SignatureIndex == pPushConstantInfo->SignatureIndex);
 
                     const PipelineResourceSignatureDesc& SignDesc = ResAttribution.pSignature->GetDesc();
