@@ -558,7 +558,7 @@ PipelineStateVkImpl::ShaderStageInfo::ShaderStageInfo(const ShaderVkImpl* pShade
     Type{pShader->GetDesc().ShaderType},
     Shaders{pShader},
     SPIRVs{pShader->GetSPIRV()},
-    ShaderResources{pShader->GetShaderResources()}
+    ShaderResources{pShader->IsCompiling() ? nullptr : pShader->GetShaderResources()} //pShader->GetShaderResources() can be empty when creating from Async PSO
 {}
 
 void PipelineStateVkImpl::ShaderStageInfo::Append(const ShaderVkImpl* pShader)
@@ -581,7 +581,7 @@ void PipelineStateVkImpl::ShaderStageInfo::Append(const ShaderVkImpl* pShader)
     }
     Shaders.push_back(pShader);
     SPIRVs.push_back(pShader->GetSPIRV());
-    ShaderResources.push_back(pShader->GetShaderResources());
+    ShaderResources.push_back(pShader->IsCompiling() ? nullptr : pShader->GetShaderResources()); //pShader->GetShaderResources() can be empty when creating from Async PSO
 }
 
 size_t PipelineStateVkImpl::ShaderStageInfo::Count() const
@@ -877,6 +877,20 @@ void PipelineStateVkImpl::ValidateShaderPushConstants(const TShaderStages& Shade
 
 void PipelineStateVkImpl::InitPipelineLayout(const PipelineStateCreateInfo& CreateInfo, TShaderStages& ShaderStages) noexcept(false)
 {
+    // Stage.ShaderResources can be null when created from Async PSO, we will have to fill it we pShader->GetShaderResources() here.
+    for (auto& Stage : ShaderStages)
+    {
+        for (size_t i = 0; i < Stage.Shaders.size(); ++i)
+        {
+            const ShaderVkImpl* pShader = Stage.Shaders[i];
+
+            if (!Stage.ShaderResources[i] && !pShader->IsCompiling())
+            {
+                Stage.ShaderResources[i] = pShader->GetShaderResources();
+            }
+        }
+    }
+
     const PSO_CREATE_INTERNAL_FLAGS InternalFlags = GetInternalCreateFlags(CreateInfo);
     if (m_UsingImplicitSignature && (InternalFlags & PSO_CREATE_INTERNAL_FLAG_IMPLICIT_SIGNATURE0) == 0)
     {
