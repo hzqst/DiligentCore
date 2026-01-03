@@ -558,7 +558,7 @@ PipelineStateVkImpl::ShaderStageInfo::ShaderStageInfo(const ShaderVkImpl* pShade
     Type{pShader->GetDesc().ShaderType},
     Shaders{pShader},
     SPIRVs{pShader->GetSPIRV()},
-    ShaderResources{pShader->IsCompiling() ? nullptr : pShader->GetShaderResources()}
+    ShaderResources{pShader->GetShaderResources()}
 {}
 
 void PipelineStateVkImpl::ShaderStageInfo::Append(const ShaderVkImpl* pShader)
@@ -581,7 +581,7 @@ void PipelineStateVkImpl::ShaderStageInfo::Append(const ShaderVkImpl* pShader)
     }
     Shaders.push_back(pShader);
     SPIRVs.push_back(pShader->GetSPIRV());
-    ShaderResources.push_back(pShader->IsCompiling() ? nullptr : pShader->GetShaderResources());
+    ShaderResources.push_back(pShader->GetShaderResources());
 }
 
 size_t PipelineStateVkImpl::ShaderStageInfo::Count() const
@@ -873,28 +873,6 @@ void PipelineStateVkImpl::ValidateShaderPushConstants(const TShaderStages& Shade
 
 void PipelineStateVkImpl::InitPipelineLayout(const PipelineStateCreateInfo& CreateInfo, TShaderStages& ShaderStages) noexcept(false)
 {
-    // Fill Stage.ShaderResources with SPIRVShaderResources::Create if it was null.
-    // Stage.ShaderResources and pShader->GetShaderResources can be null when being async loaded from archiver.
-    for (auto& Stage : ShaderStages)
-    {
-        for (size_t i = 0; i < Stage.Shaders.size(); ++i)
-        {
-            const ShaderVkImpl* pShader = Stage.Shaders[i];
-
-            if (!Stage.ShaderResources[i] && !pShader->IsCompiling())
-            {
-                SPIRVShaderResources::CreateInfo ResCI;
-                ResCI.ShaderType                  = pShader->GetDesc().ShaderType;
-                ResCI.Name                        = pShader->GetDesc().Name;
-                ResCI.CombinedSamplerSuffix       = pShader->GetDesc().UseCombinedTextureSamplers ? pShader->GetDesc().CombinedSamplerSuffix : nullptr;
-                ResCI.LoadShaderStageInputs       = pShader->GetDesc().ShaderType == SHADER_TYPE_VERTEX;
-                ResCI.LoadUniformBufferReflection = true; //LoadConstantBufferReflection;
-
-                Stage.ShaderResources[i] = SPIRVShaderResources::Create(GetRawAllocator(), pShader->GetSPIRV(), ResCI);
-            }
-        }
-    }
-
     const PSO_CREATE_INTERNAL_FLAGS InternalFlags = GetInternalCreateFlags(CreateInfo);
     if (m_UsingImplicitSignature && (InternalFlags & PSO_CREATE_INTERNAL_FLAG_IMPLICIT_SIGNATURE0) == 0)
     {
