@@ -840,6 +840,10 @@ void PipelineStateVkImpl::ValidateShaderPushConstants(const TShaderStages& Shade
     {
         for (size_t i = 0; i < Stage.Shaders.size(); ++i)
         {
+            // Just in case it's create from archiver with "STRIP_REFLECTION"
+            if (!Stage.ShaderResources[i])
+                continue;
+
             const ShaderVkImpl*         pShader         = Stage.Shaders[i];
             const SPIRVShaderResources& ShaderResources = (*Stage.ShaderResources[i]);
 
