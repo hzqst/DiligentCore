@@ -40,16 +40,6 @@ namespace Diligent
 class RenderDeviceVkImpl;
 class PipelineResourceSignatureVkImpl;
 
-struct PushConstantInfo
-{
-    Uint32             Size           = 0;
-    VkShaderStageFlags StageFlags     = 0;
-    Uint32             SignatureIndex = ~0u;
-    Uint32             ResourceIndex  = ~0u;
-
-    constexpr explicit operator bool() const { return Size != 0; }
-};
-
 /// Implementation of the Diligent::PipelineLayoutVk class
 class PipelineLayoutVk
 {

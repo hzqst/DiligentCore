@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -250,13 +250,6 @@ public:
                                 Uint32 CacheOffset,
                                 Uint32 DynamicBufferOffset);
 
-    // Sets inline constant data in the resource cache
-    void SetInlineConstants(Uint32      DescrSetIndex,
-                            Uint32      CacheOffset,
-                            const void* pConstants,
-                            Uint32      FirstConstant,
-                            Uint32      NumConstants);
-
     // Gets the inline constant data pointer from the resource cache
     const void* GetInlineConstantData(Uint32 DescrSetIndex, Uint32 CacheOffset) const;
 
@@ -283,6 +276,13 @@ public:
     {
         m_HasInlineConstants = 1;
     }
+
+    // Sets inline constant data in the resource cache
+    void SetInlineConstants(Uint32      DescrSetIndex,
+                            Uint32      CacheOffset,
+                            const void* pConstants,
+                            Uint32      FirstConstant,
+                            Uint32      NumConstants);
 
     Uint32 GetNumDescriptorSets() const { return m_NumSets; }
     bool   HasDynamicResources() const { return m_NumDynamicBuffers > 0; }

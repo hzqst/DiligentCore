@@ -191,8 +191,7 @@ public:
 
     bool HasInlineConstants() const
     {
-        // TODO
-        return false;
+        return m_NumInlineConstantBufferAttribs != 0;
     }
 
 private:

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -656,19 +656,20 @@ void ShaderVariableManagerVk::SetInlineConstants(Uint32      ResIndex,
                                                  Uint32      FirstConstant,
                                                  Uint32      NumConstants)
 {
-    const PipelineResourceAttribsVk& Attribs = m_pSignature->GetResourceAttribs(ResIndex);
-    const PipelineResourceDesc&      ResDesc = m_pSignature->GetResourceDesc(ResIndex);
+    const PipelineResourceAttribsVk& Attribs     = m_pSignature->GetResourceAttribs(ResIndex);
+    const ResourceCacheContentType   CacheType   = m_ResourceCache.GetContentType();
+    const Uint32                     CacheOffset = Attribs.CacheOffset(CacheType);
 
 #ifdef DILIGENT_DEVELOPMENT
-    VerifyInlineConstants(ResDesc, pConstants, FirstConstant, NumConstants);
+    {
+        const PipelineResourceDesc& ResDesc = m_pSignature->GetResourceDesc(ResIndex);
+        VerifyInlineConstants(ResDesc, pConstants, FirstConstant, NumConstants);
+    }
 #endif
 
     // All inline constants use the same path at PRS level - store data in the resource cache.
-    // Push constant selection is done at PSO creation time, not here.
     // The data will be used either for push constants (vkCmdPushConstants) or emulated buffers
-    // depending on the PSO's selection during UpdateInlineConstantBuffers().
-    const ResourceCacheContentType CacheType   = m_ResourceCache.GetContentType();
-    const Uint32                   CacheOffset = Attribs.CacheOffset(CacheType);
+    // depending on the PSO's selection.
     m_ResourceCache.SetInlineConstants(Attribs.DescrSet, CacheOffset, pConstants, FirstConstant, NumConstants);
 }
 
@@ -678,7 +679,7 @@ IDeviceObject* ShaderVariableManagerVk::Get(Uint32 ArrayIndex, Uint32 ResIndex) 
     const PipelineResourceAttribsVk& Attribs     = GetResourceAttribs(ResIndex);
     const Uint32                     CacheOffset = Attribs.CacheOffset(m_ResourceCache.GetContentType());
 
-    // For inline constants, GetArraySize() returns 1 (actual array size)
+    // For inline constants, GetArraySize() returns 1 (actual array size), while ArraySize is the number of constants
     VERIFY_EXPR(ArrayIndex < ResDesc.GetArraySize());
 
     if (Attribs.DescrSet < m_ResourceCache.GetNumDescriptorSets())
