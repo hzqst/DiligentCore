@@ -751,7 +751,6 @@ void PipelineStateVkImpl::RemapOrVerifyShaderResources(
                     ResCI.Name                        = ShaderName;
                     ResCI.CombinedSamplerSuffix       = pShader->GetDesc().UseCombinedTextureSamplers ? pShader->GetDesc().CombinedSamplerSuffix : nullptr;
                     ResCI.LoadShaderStageInputs       = pShader->GetDesc().ShaderType == SHADER_TYPE_VERTEX;
-                    ResCI.LoadUniformBufferReflection = true;
 
                     pShaderResources = SPIRVShaderResources::Create(GetRawAllocator(), SPIRV, ResCI);
                 }
