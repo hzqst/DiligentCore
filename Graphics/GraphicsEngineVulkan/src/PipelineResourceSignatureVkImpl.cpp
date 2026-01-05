@@ -553,9 +553,10 @@ void PipelineResourceSignatureVkImpl::CreateSetLayouts(const bool IsSerialized)
 
     // Initialize inline constant buffers in the static resource cache
     // Memory was already allocated in InitializeSets above
+    // Build inline constant info and set up pointers
     if (m_NumInlineConstantBufferAttribs > 0 && m_pStaticResCache != nullptr)
     {
-        Uint32 InlineConstantOffset = 0;
+        ShaderResourceCacheVk::InlineConstantInfoVectorType StaticInlineConstInfo;
         for (Uint32 i = 0; i < m_NumInlineConstantBufferAttribs; ++i)
         {
             const InlineConstantBufferAttribsVk& InlineCBAttr = m_InlineConstantBufferAttribs[i];
@@ -565,12 +566,10 @@ void PipelineResourceSignatureVkImpl::CreateSetLayouts(const bool IsSerialized)
 
             if (ResDesc.VarType == SHADER_RESOURCE_VARIABLE_TYPE_STATIC)
             {
-                const Uint32 DataSize    = InlineCBAttr.NumConstants * sizeof(Uint32);
-                const Uint32 CacheOffset = Attr.StaticCacheOffset;
-                m_pStaticResCache->InitializeInlineConstantBuffer(0, CacheOffset, InlineCBAttr.NumConstants, InlineConstantOffset);
-                InlineConstantOffset += DataSize;
+                StaticInlineConstInfo.push_back({0, Attr.StaticCacheOffset, InlineCBAttr.NumConstants});
             }
         }
+        m_pStaticResCache->InitializeInlineConstantDataPointers(StaticInlineConstInfo);
     }
 }
 
@@ -610,19 +609,25 @@ void PipelineResourceSignatureVkImpl::InitSRBResourceCache(ShaderResourceCacheVk
         VERIFY_EXPR(m_DescriptorSetSizes[i] != ~0U);
 #endif
 
-    // Calculate total memory size for CPU staging data
-    Uint32 TotalInlineConstantBytes = 0;
+    const ResourceCacheContentType CacheType = ResourceCache.GetContentType();
+
+    // Build inline constant info for all variables
+    ShaderResourceCacheVk::InlineConstantInfoVectorType InlineConstInfo;
     for (Uint32 i = 0; i < m_NumInlineConstantBufferAttribs; ++i)
     {
         const InlineConstantBufferAttribsVk& InlineCBAttr = m_InlineConstantBufferAttribs[i];
-        TotalInlineConstantBytes += InlineCBAttr.NumConstants * sizeof(Uint32);
+        const ResourceAttribs&               Attr         = GetResourceAttribs(InlineCBAttr.ResIndex);
+        InlineConstInfo.push_back({Attr.DescrSet, Attr.CacheOffset(CacheType), InlineCBAttr.NumConstants});
     }
 
     IMemoryAllocator& CacheMemAllocator = m_SRBMemAllocator.GetResourceCacheDataAllocator(0);
-    ResourceCache.InitializeSets(CacheMemAllocator, NumSets, m_DescriptorSetSizes.data(), TotalInlineConstantBytes);
+    // InitializeSets allocates memory but does NOT set up inline constant pointers.
+    // We must call SetupInlineConstantPointers AFTER InitializeResources because
+    // InitializeResources uses placement new to construct Resource objects,
+    // which would overwrite the pInlineConstantData pointers.
+    ResourceCache.InitializeSets(CacheMemAllocator, NumSets, m_DescriptorSetSizes.data(), InlineConstInfo);
 
-    const Uint32                   TotalResources = GetTotalResourceCount();
-    const ResourceCacheContentType CacheType      = ResourceCache.GetContentType();
+    const Uint32 TotalResources = GetTotalResourceCount();
     for (Uint32 r = 0; r < TotalResources; ++r)
     {
         const PipelineResourceDesc& ResDesc = GetResourceDesc(r);
@@ -634,31 +639,8 @@ void PipelineResourceSignatureVkImpl::InitSRBResourceCache(ShaderResourceCacheVk
                                           Attr.GetDescriptorType(), Attr.IsImmutableSamplerAssigned());
     }
 
-    // Initialize inline constant buffers - set up data pointers to the unified memory block
-    // All inline constants use the emulated buffer path at PRS level.
-    // Push constant selection is deferred to PSO creation time.
-    // All SRBs share the same GPU buffer (stored in InlineConstantBufferAttribsVk::pBuffer),
-    // but each has its own CPU staging data.
-    if (m_NumInlineConstantBufferAttribs > 0)
-    {
-        // Ensure the cache reports inline constants so DeviceContextVkImpl
-        // updates emulated buffers even if no data has been written yet.
-        ResourceCache.MarkHasInlineConstants();
-
-        Uint32 InlineConstantOffset = 0;
-        for (Uint32 i = 0; i < m_NumInlineConstantBufferAttribs; ++i)
-        {
-            const InlineConstantBufferAttribsVk& InlineCBAttr = m_InlineConstantBufferAttribs[i];
-            const Uint32                         DataSize     = InlineCBAttr.NumConstants * sizeof(Uint32);
-            const ResourceAttribs&               Attr         = GetResourceAttribs(InlineCBAttr.ResIndex);
-
-            // Initialize staging memory in the resource cache
-            // The GPU buffer is shared from InlineCBAttr.pBuffer (created in CreateSetLayouts)
-            ResourceCache.InitializeInlineConstantBuffer(Attr.DescrSet, Attr.CacheOffset(CacheType),
-                                                         InlineCBAttr.NumConstants, InlineConstantOffset);
-            InlineConstantOffset += DataSize;
-        }
-    }
+    // Now that all Resource objects are constructed, set up inline constant pointers
+    ResourceCache.InitializeInlineConstantDataPointers(InlineConstInfo);
 
 #ifdef DILIGENT_DEBUG
     ResourceCache.DbgVerifyResourceInitialization();
