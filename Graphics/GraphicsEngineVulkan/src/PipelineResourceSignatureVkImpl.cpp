@@ -622,7 +622,7 @@ void PipelineResourceSignatureVkImpl::InitSRBResourceCache(ShaderResourceCacheVk
 
     IMemoryAllocator& CacheMemAllocator = m_SRBMemAllocator.GetResourceCacheDataAllocator(0);
     // InitializeSets allocates memory but does NOT set up inline constant pointers.
-    // We must call SetupInlineConstantPointers AFTER InitializeResources because
+    // We must call InitializeInlineConstantDataPointers AFTER InitializeResources because
     // InitializeResources uses placement new to construct Resource objects,
     // which would overwrite the pInlineConstantData pointers.
     ResourceCache.InitializeSets(CacheMemAllocator, NumSets, m_DescriptorSetSizes.data(), InlineConstInfo);
