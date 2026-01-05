@@ -477,11 +477,7 @@ void DeviceContextVkImpl::CommitPushConstants(ResourceBindInfo& BindInfo)
         return;
     }
 
-    m_CommandBuffer.PushConstants(Layout.GetVkPipelineLayout(), 
-        PushConstantInfo.vkRange.stageFlags, 
-        PushConstantInfo.vkRange.offset, 
-        PushConstantInfo.vkRange.size, 
-        pPushConstantData);
+    m_CommandBuffer.PushConstants(Layout.GetVkPipelineLayout(), PushConstantInfo.vkRange, pPushConstantData);
 }
 
 void DeviceContextVkImpl::CommitDescriptorSets(ResourceBindInfo& BindInfo, Uint32 CommitSRBMask)

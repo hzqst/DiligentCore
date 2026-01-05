@@ -1012,22 +1012,15 @@ void PipelineStateVkImpl::DvpVerifySRBResources(const DeviceContextVkImpl* pCtx,
         pResources->ProcessResources(
             [&](const SPIRVShaderResourceAttribs& ResAttribs, Uint32) //
             {
-                // Push constants are validated but don't use descriptor sets
-                const bool IsPushConstant = (ResAttribs.Type == SPIRVShaderResourceAttribs::ResourceType::PushConstant);
-
                 if (!res_info->IsImmutableSampler()) // There are also immutable samplers in the list
                 {
                     VERIFY_EXPR(res_info->pSignature != nullptr);
                     VERIFY_EXPR(res_info->pSignature->GetDesc().BindingIndex == res_info->SignatureIndex);
 
-                    // Skip descriptor set validation for push constants (they don't use descriptor sets)
-                    if (!IsPushConstant)
-                    {
-                        const ShaderResourceCacheVk* pResourceCache = ResourceCaches[res_info->SignatureIndex];
-                        DEV_CHECK_ERR(pResourceCache != nullptr, "Resource cache at index ", res_info->SignatureIndex, " is null.");
-                        res_info->pSignature->DvpValidateCommittedResource(pCtx, ResAttribs, res_info->ResourceIndex, *pResourceCache,
-                                                                           pResources->GetShaderName(), m_Desc.Name);
-                    }
+                    const ShaderResourceCacheVk* pResourceCache = ResourceCaches[res_info->SignatureIndex];
+                    DEV_CHECK_ERR(pResourceCache != nullptr, "Resource cache at index ", res_info->SignatureIndex, " is null.");
+                    res_info->pSignature->DvpValidateCommittedResource(pCtx, ResAttribs, res_info->ResourceIndex, *pResourceCache,
+                                                                       pResources->GetShaderName(), m_Desc.Name);
                 }
                 ++res_info;
             } //

@@ -31,11 +31,9 @@
 #include "RenderDeviceVkImpl.hpp"
 #include "PipelineResourceSignatureVkImpl.hpp"
 #include "PipelineStateVkImpl.hpp"
-#include "PipelineLayoutVk.hpp"
 #include "ShaderVkImpl.hpp"
 #include "DeviceObjectArchiveVk.hpp"
 #include "SerializedPipelineStateImpl.hpp"
-#include "VulkanTypeConversions.hpp"
 
 namespace Diligent
 {
