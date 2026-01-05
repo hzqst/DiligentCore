@@ -115,7 +115,6 @@ public:
         const RefCntAutoPtr<PipelineResourceSignatureVkImpl> pSignatures[],
         Uint32                                               SignatureCount,
         const TBindIndexToDescSetIndex&                      BindIndexToDescSetIndex,
-        const PipelineLayoutVk::PushConstantInfo*            pPushConstantInfo,
         bool                                                 bVerifyOnly,
         bool                                                 bStripReflection,
         const char*                                          PipelineName,

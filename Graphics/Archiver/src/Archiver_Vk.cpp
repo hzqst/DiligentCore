@@ -155,7 +155,6 @@ void SerializedPipelineStateImpl::PatchShadersVk(const CreateInfoType& CreateInf
 
         // Same as PipelineLayoutVk::Create()
         PipelineStateVkImpl::TBindIndexToDescSetIndex BindIndexToDescSetIndex = {};
-        PipelineLayoutVk::PushConstantInfo            PushConstantInfo        = {};
         Uint32                                        DescSetLayoutCount      = 0;
         for (Uint32 i = 0; i < SignaturesCount; ++i)
         {
@@ -172,26 +171,6 @@ void SerializedPipelineStateImpl::PatchShadersVk(const CreateInfoType& CreateInf
                 if (pSignature->GetDescriptorSetSize(SetId) != ~0u)
                     ++DescSetLayoutCount;
             }
-
-            // Extract push constant info from the first signature that has inline constants.
-            // Same logic as PipelineLayoutVk::Create().
-            if (!PushConstantInfo && pSignature->HasInlineConstants())
-            {
-                for (Uint32 r = 0; r < pSignature->GetTotalResourceCount(); ++r)
-                {
-                    const PipelineResourceDesc& ResDesc = pSignature->GetResourceDesc(r);
-                    if (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
-                    {
-                        VERIFY_EXPR(ResDesc.ArraySize > 0);
-                        // For inline constants, ArraySize contains the number of 32-bit constants.
-                        PushConstantInfo.Size           = ResDesc.ArraySize * sizeof(Uint32);
-                        PushConstantInfo.StageFlags     = ShaderTypesToVkShaderStageFlags(ResDesc.ShaderStages);
-                        PushConstantInfo.SignatureIndex = i;
-                        PushConstantInfo.ResourceIndex  = r;
-                        break;
-                    }
-                }
-            }
         }
         VERIFY_EXPR(DescSetLayoutCount <= MAX_RESOURCE_SIGNATURES * 2);
 
@@ -200,7 +179,6 @@ void SerializedPipelineStateImpl::PatchShadersVk(const CreateInfoType& CreateInf
                                                           Signatures.data(),
                                                           SignaturesCount,
                                                           BindIndexToDescSetIndex,
-                                                          PushConstantInfo ? &PushConstantInfo : nullptr,
                                                           false, // bVerifyOnly
                                                           bStripReflection,
                                                           CreateInfo.PSODesc.Name);
