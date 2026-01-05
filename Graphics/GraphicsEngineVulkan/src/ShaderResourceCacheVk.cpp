@@ -42,8 +42,8 @@ namespace Diligent
 {
 
 size_t ShaderResourceCacheVk::GetRequiredMemorySize(Uint32                              NumSets,
-                                                     const Uint32*                       SetSizes,
-                                                     const InlineConstantInfoVectorType& InlineConstants)
+                                                    const Uint32*                       SetSizes,
+                                                    const InlineConstantInfoVectorType& InlineConstants)
 {
     Uint32 TotalInlineConstantBytes = 0;
     for (const auto& Info : InlineConstants)
@@ -53,8 +53,8 @@ size_t ShaderResourceCacheVk::GetRequiredMemorySize(Uint32                      
 }
 
 size_t ShaderResourceCacheVk::GetRequiredMemorySize(Uint32        NumSets,
-                                                     const Uint32* SetSizes,
-                                                     Uint32        TotalInlineConstantBytes)
+                                                    const Uint32* SetSizes,
+                                                    Uint32        TotalInlineConstantBytes)
 {
     Uint32 TotalResources = 0;
     for (Uint32 t = 0; t < NumSets; ++t)
