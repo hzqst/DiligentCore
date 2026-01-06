@@ -73,24 +73,23 @@ bool PipelineLayoutVk::GetPushConstantInfos(
         if (pSignature == nullptr)
             continue;
 
-        // Vulkan allows only one push constant block per pipeline layout.
+        // Vulkan allows only one push constant block per pipeline layout, but okay with multiple push constant ranges.
         // Diligent API allows multiple inline constant resources, so we promote only the first inline constant
         // from resource signatures to push constants. Other inline constants remain uniform buffers.
         if (pSignature->HasInlineConstants())
         {
-            bool bFirstPCInfo = false;
-            bool bPCInfoAdded = false;
+            bool bInlineConstantResourceFound = false;
 
             for (Uint32 r = 0; r < pSignature->GetTotalResourceCount(); ++r)
             {
                 const PipelineResourceDesc& ResDesc = pSignature->GetResourceDesc(r);
                 if ((ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS))
                 {
+                    bInlineConstantResourceFound = true;
+
                     //Ensure only the previous promoted inline constants are added into OutPushConstantInfos
                     if (PushConstantName.empty() || PushConstantName == ResDesc.Name)
                     {
-                        bFirstPCInfo = PushConstantName.empty() ? true : false;
-
                         PushConstantInfoPtr PCInfo = std::make_unique<PushConstantInfo>();
 
                         PushConstantName = ResDesc.Name;
@@ -107,16 +106,11 @@ bool PipelineLayoutVk::GetPushConstantInfos(
                         PCInfo->ShaderStages   = ResDesc.ShaderStages;
 
                         OutPCInfos.emplace_back(std::move(PCInfo));
-                        bPCInfoAdded = true;
-                        break;
                     }
                 }
             }
 
-            if (bFirstPCInfo)
-            {
-                VERIFY(bPCInfoAdded, "pSignature->HasInlineConstants() returned true, but no inline constant resource was found. This is a bug.");
-            }
+            VERIFY(bInlineConstantResourceFound, "pSignature->HasInlineConstants() returned true, but no inline constant resource was found. This is a bug.");
         }
     }
 
