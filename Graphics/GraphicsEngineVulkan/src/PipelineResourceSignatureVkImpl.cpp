@@ -1186,9 +1186,9 @@ PipelineResourceSignatureInternalDataVk PipelineResourceSignatureVkImpl::GetInte
     return InternalData;
 }
 
-void PipelineResourceSignatureVkImpl::UpdateInlineConstantBuffers(const ShaderResourceCacheVk& ResourceCache,
-                                                                  DeviceContextVkImpl&         Ctx,
-                                                                  Uint32                       PushConstantResIndex) const
+void PipelineResourceSignatureVkImpl::UpdateInlineConstantBuffers(const ShaderResourceCacheVk&               ResourceCache,
+                                                                  DeviceContextVkImpl&                       Ctx,
+                                                                  const std::vector<Uint32>&                 PushConstantResIndices) const
 {
     // Determine the cache type based on the resource cache content
     // SRB caches use SRBCacheOffset, static caches use StaticCacheOffset
@@ -1204,7 +1204,7 @@ void PipelineResourceSignatureVkImpl::UpdateInlineConstantBuffers(const ShaderRe
         VERIFY_EXPR(pInlineConstantData != nullptr);
 
         // Skip push constants - they are handled directly by CommitPushConstants
-        if (InlineCBAttr.ResIndex == PushConstantResIndex)
+        if (std::find(PushConstantResIndices.begin(), PushConstantResIndices.end(), InlineCBAttr.ResIndex) != PushConstantResIndices.end())
             continue;
 
         // For emulated inline constants, get the shared buffer from the Signature

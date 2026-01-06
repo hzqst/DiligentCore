@@ -59,11 +59,13 @@ void PipelineLayoutVk::Release(RenderDeviceVkImpl* pDeviceVk, Uint64 CommandQueu
     }
 }
 
-PipelineLayoutVk::PushConstantInfo PipelineLayoutVk::GetPushConstantInfo(
+bool PipelineLayoutVk::GetPushConstantInfos(
     const RefCntAutoPtr<PipelineResourceSignatureVkImpl>* ppSignatures,
-    Uint32                                                SignatureCount)
+    Uint32                                                SignatureCount,
+    PushConstantInfos&                                    OutPCInfos)
 {
-    PushConstantInfo PCInfo;
+    std::string PushConstantName;
+
     for (Uint32 BindInd = 0; BindInd < SignatureCount; ++BindInd)
     {
         // Signatures are arranged by binding index by PipelineStateBase::CopyResourceSignatures
@@ -71,37 +73,54 @@ PipelineLayoutVk::PushConstantInfo PipelineLayoutVk::GetPushConstantInfo(
         if (pSignature == nullptr)
             continue;
 
-        // Vulkan allows only one push constant range per pipeline layout.
+        // Vulkan allows only one push constant block per pipeline layout.
         // Diligent API allows multiple inline constant resources, so we promote only the first inline constant
         // from resource signatures to push constants. Other inline constants remain uniform buffers.
         if (pSignature->HasInlineConstants())
         {
+            bool bFirstPCInfo = false;
+            bool bPCInfoAdded = false;
+
             for (Uint32 r = 0; r < pSignature->GetTotalResourceCount(); ++r)
             {
                 const PipelineResourceDesc& ResDesc = pSignature->GetResourceDesc(r);
-                if (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
+                if ((ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS))
                 {
-                    PCInfo.Name = ResDesc.Name;
+                    //Ensure only the previous promoted inline constants are added into OutPushConstantInfos
+                    if (PushConstantName.empty() || PushConstantName == ResDesc.Name)
+                    {
+                        bFirstPCInfo = PushConstantName.empty() ? true : false;
 
-                    // For inline constants, ArraySize contains the number of 32-bit constants.
-                    VERIFY_EXPR(ResDesc.ArraySize > 0);
-                    PCInfo.vkRange.size       = ResDesc.ArraySize * sizeof(Uint32);
-                    PCInfo.vkRange.offset     = 0;
-                    PCInfo.vkRange.stageFlags = ShaderTypesToVkShaderStageFlags(ResDesc.ShaderStages);
+                        PushConstantInfoPtr PCInfo = std::make_unique<PushConstantInfo>();
 
-                    PCInfo.SignatureIndex = BindInd;
-                    PCInfo.ResourceIndex  = r;
+                        PushConstantName = ResDesc.Name;
+                        PCInfo->Name     = ResDesc.Name;
 
-                    break;
+                        // For inline constants, ArraySize contains the number of 32-bit constants.
+                        VERIFY_EXPR(ResDesc.ArraySize > 0);
+                        PCInfo->vkRange.size       = ResDesc.ArraySize * sizeof(Uint32);
+                        PCInfo->vkRange.offset     = 0;
+                        PCInfo->vkRange.stageFlags = ShaderTypesToVkShaderStageFlags(ResDesc.ShaderStages);
+
+                        PCInfo->SignatureIndex = BindInd;
+                        PCInfo->ResourceIndex  = r;
+                        PCInfo->ShaderStages   = ResDesc.ShaderStages;
+
+                        OutPCInfos.emplace_back(std::move(PCInfo));
+                        bPCInfoAdded = true;
+                        break;
+                    }
                 }
             }
 
-            VERIFY(PCInfo, "pSignature->HasInlineConstants() returned true, but no inline constant resource was found. This is a bug.");
-            break;
+            if (bFirstPCInfo)
+            {
+                VERIFY(bPCInfoAdded, "pSignature->HasInlineConstants() returned true, but no inline constant resource was found. This is a bug.");
+            }
         }
     }
 
-    return PCInfo;
+    return PushConstantName.empty() ? false : true;
 }
 
 void PipelineLayoutVk::Create(RenderDeviceVkImpl*                             pDeviceVk,
@@ -161,15 +180,17 @@ void PipelineLayoutVk::Create(RenderDeviceVkImpl*                             pD
                             ") used by the pipeline layout exceeds device limit (", Limits.maxDescriptorSetStorageBuffersDynamic, ")");
     }
 
-    if (PushConstantInfo PCInfo = GetPushConstantInfo(ppSignatures, SignatureCount))
+    if (GetPushConstantInfos(ppSignatures, SignatureCount, m_PushConstantInfos))
     {
         // Validate push constant size against device limits
-        if (PCInfo.vkRange.size > Limits.maxPushConstantsSize)
+        for (const auto& PCInfo : m_PushConstantInfos)
         {
-            LOG_ERROR_AND_THROW("Push constant size (", PCInfo.vkRange.size,
-                                " bytes) exceeds device limit (", Limits.maxPushConstantsSize, " bytes)");
+            if (PCInfo->vkRange.size > Limits.maxPushConstantsSize)
+            {
+                LOG_ERROR_AND_THROW("Push constant size (", PCInfo->vkRange.size,
+                                    " bytes) exceeds device limit (", Limits.maxPushConstantsSize, " bytes)");
+            }
         }
-        m_PushConstantInfo = std::make_unique<PushConstantInfo>(std::move(PCInfo));
     }
 
     VkPipelineLayoutCreateInfo PipelineLayoutCI{};
@@ -178,8 +199,17 @@ void PipelineLayoutVk::Create(RenderDeviceVkImpl*                             pD
     PipelineLayoutCI.flags                  = 0; // reserved for future use
     PipelineLayoutCI.setLayoutCount         = DescSetLayoutCount;
     PipelineLayoutCI.pSetLayouts            = DescSetLayoutCount ? DescSetLayouts.data() : nullptr;
-    PipelineLayoutCI.pushConstantRangeCount = m_PushConstantInfo ? 1 : 0;
-    PipelineLayoutCI.pPushConstantRanges    = m_PushConstantInfo ? &m_PushConstantInfo->vkRange : nullptr;
+
+    std::vector<VkPushConstantRange> vkRanges;
+    vkRanges.reserve(m_PushConstantInfos.size());
+
+    for (const auto& PCInfo : m_PushConstantInfos)
+    {
+        vkRanges.emplace_back(PCInfo->vkRange);
+    }
+
+    PipelineLayoutCI.pushConstantRangeCount = static_cast<Uint32>(vkRanges.size());
+    PipelineLayoutCI.pPushConstantRanges = vkRanges.data();
 
     m_VkPipelineLayout = pDeviceVk->GetLogicalDevice().CreatePipelineLayout(PipelineLayoutCI);
 

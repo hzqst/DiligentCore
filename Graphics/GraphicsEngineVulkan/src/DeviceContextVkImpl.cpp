@@ -417,9 +417,9 @@ DeviceContextVkImpl::ResourceBindInfo& DeviceContextVkImpl::GetBindInfo(PIPELINE
 
 void DeviceContextVkImpl::UpdateInlineConstantBuffers(ResourceBindInfo& BindInfo)
 {
-    const PipelineLayoutVk& Layout           = m_pPipelineState->GetPipelineLayout();
-    const auto&             PushConstantInfo = Layout.GetPushConstantInfo();
-    const Uint32            SignCount        = m_pPipelineState->GetResourceSignatureCount();
+    const PipelineLayoutVk&    Layout       = m_pPipelineState->GetPipelineLayout();
+    const std::vector<Uint32>& PCResIndices = Layout.GetPushConstantResIndices();
+    const Uint32               SignCount    = m_pPipelineState->GetResourceSignatureCount();
 
     for (Uint32 i = 0; i < SignCount; ++i)
     {
@@ -439,45 +439,46 @@ void DeviceContextVkImpl::UpdateInlineConstantBuffers(ResourceBindInfo& BindInfo
         if (!pResourceCache->HasInlineConstants())
             continue;
 
-        // Determine which resource (if any) in this signature should use push constant path
-        // If this signature contains the selected push constant, pass its resource index
-        // Otherwise pass ~0u to use emulated buffer path for all
-        const Uint32 PushConstantResIndex = (i == PushConstantInfo.SignatureIndex) ? PushConstantInfo.ResourceIndex : ~0u;
-
-        // Update inline constant buffers
-        pSign->UpdateInlineConstantBuffers(*pResourceCache, *this, PushConstantResIndex);
+        // Update inline constant buffers with Map/Unmap. skip when InlineCBAttr.ResIndex found in PCResIndices (as a push constants).
+        pSign->UpdateInlineConstantBuffers(*pResourceCache, *this, PCResIndices);
     }
 }
 
 void DeviceContextVkImpl::CommitPushConstants(ResourceBindInfo& BindInfo)
 {
     VERIFY_EXPR(m_pPipelineState != nullptr);
-    const PipelineLayoutVk& Layout           = m_pPipelineState->GetPipelineLayout();
-    const auto&             PushConstantInfo = Layout.GetPushConstantInfo();
+    const PipelineLayoutVk&                    Layout  = m_pPipelineState->GetPipelineLayout();
+    const PipelineLayoutVk::PushConstantInfos& PCInfos = Layout.GetPushConstantInfos();
 
-    if (!PushConstantInfo)
+    if (!PCInfos.size())
         return;
 
-    const PipelineResourceSignatureVkImpl* pSign = m_pPipelineState->GetResourceSignature(PushConstantInfo.SignatureIndex);
-    VERIFY_EXPR(pSign != nullptr);
-
-    const ShaderResourceCacheVk* pResourceCache = BindInfo.ResourceCaches[PushConstantInfo.SignatureIndex];
-    if (pResourceCache == nullptr)
+    for (size_t i = 0; i < PCInfos.size(); ++i)
     {
-        DEV_CHECK_ERR(false, "Signature '", pSign->GetDesc().Name, "' has push constants but no SRB is bound. "
-                                                                   "Did you call CommitShaderResources()?");
-        return;
-    }
+        const auto& pPCInfo = PCInfos[i];
+        VERIFY_EXPR(pPCInfo != nullptr);
 
-    // Get inline constant data directly from the resource cache
-    const void* pPushConstantData = pSign->GetPushConstantData(*pResourceCache, PushConstantInfo.ResourceIndex);
-    if (pPushConstantData == nullptr)
-    {
-        DEV_CHECK_ERR(false, "Push constant data is null in signature '", pSign->GetDesc().Name, "'");
-        return;
-    }
+        const PipelineResourceSignatureVkImpl* pSign = m_pPipelineState->GetResourceSignature(pPCInfo->SignatureIndex);
+        VERIFY_EXPR(pSign != nullptr);
 
-    m_CommandBuffer.PushConstants(Layout.GetVkPipelineLayout(), PushConstantInfo.vkRange, pPushConstantData);
+        const ShaderResourceCacheVk* pResourceCache = BindInfo.ResourceCaches[pPCInfo->SignatureIndex];
+        if (pResourceCache == nullptr)
+        {
+            DEV_CHECK_ERR(false, "Signature '", pSign->GetDesc().Name, "' has push constants but no SRB is bound. "
+                                                                       "Did you call CommitShaderResources()?");
+            return;
+        }
+
+        // Get inline constant data directly from the resource cache
+        const void* pPushConstantData = pSign->GetPushConstantData(*pResourceCache, pPCInfo->ResourceIndex);
+        if (pPushConstantData == nullptr)
+        {
+            DEV_CHECK_ERR(false, "Push constant data is null in signature '", pSign->GetDesc().Name, "'");
+            return;
+        }
+
+        m_CommandBuffer.PushConstants(Layout.GetVkPipelineLayout(), pPCInfo->vkRange, pPushConstantData);
+    }
 }
 
 void DeviceContextVkImpl::CommitDescriptorSets(ResourceBindInfo& BindInfo, Uint32 CommitSRBMask)

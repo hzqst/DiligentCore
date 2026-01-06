@@ -68,18 +68,29 @@ public:
 
         std::string Name;
 
-        Uint32 SignatureIndex = ~0u;
-        Uint32 ResourceIndex  = ~0u;
+        Uint32 SignatureIndex      = ~0u;
+        Uint32 ResourceIndex       = ~0u;
+        SHADER_TYPE ShaderStages   = SHADER_TYPE_UNKNOWN;
 
         constexpr explicit operator bool() const { return vkRange.size != 0; }
     };
-    static PushConstantInfo GetPushConstantInfo(const RefCntAutoPtr<PipelineResourceSignatureVkImpl>* ppSignatures,
-                                                Uint32                                                SignatureCount);
+    
+    using PushConstantInfoPtr = std::unique_ptr<PushConstantInfo>;
+    using PushConstantInfos = std::vector<PushConstantInfoPtr>;
 
-    const PushConstantInfo& GetPushConstantInfo() const
+    static bool GetPushConstantInfos(const RefCntAutoPtr<PipelineResourceSignatureVkImpl>* ppSignatures,
+                                     Uint32                                                SignatureCount,
+                                     PushConstantInfos&                                    OutPCInfos);
+
+    const PushConstantInfos& GetPushConstantInfos() const
     {
-        static const PushConstantInfo NullPCInfo;
-        return m_PushConstantInfo ? *m_PushConstantInfo : NullPCInfo;
+        return m_PushConstantInfos;
+    }
+
+    const std::vector<Uint32>& GetPushConstantResIndices() const
+    {
+        return m_PushConstantResIndices;
+
     }
 
 private:
@@ -93,7 +104,8 @@ private:
     // (Maximum is MAX_RESOURCE_SIGNATURES * 2)
     Uint8 m_DescrSetCount = 0;
 
-    std::unique_ptr<PushConstantInfo> m_PushConstantInfo;
+    PushConstantInfos m_PushConstantInfos;
+    std::vector<Uint32> m_PushConstantResIndices;
 
 #ifdef DILIGENT_DEBUG
     Uint32 m_DbgMaxBindIndex = 0;

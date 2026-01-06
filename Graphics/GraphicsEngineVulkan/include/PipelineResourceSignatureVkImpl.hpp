@@ -158,11 +158,10 @@ public:
 
     // Updates inline constant buffers by mapping the internal buffers and copying data from the resource cache
     // ResourceCache must be valid - each SRB has its own copy of inline constant data stored in the cache
-    // PushConstantResIndex: Resource index of the inline constant selected as push constant by PSO
-    //                       Pass ~0u if no push constant is selected from this signature
-    void UpdateInlineConstantBuffers(const ShaderResourceCacheVk& ResourceCache,
-                                     DeviceContextVkImpl&         Ctx,
-                                     Uint32                       PushConstantResIndex) const;
+    // PushConstantResIndices: Index of push constants used by pipeline layout
+    void UpdateInlineConstantBuffers(const ShaderResourceCacheVk&               ResourceCache,
+                                     DeviceContextVkImpl&                       Ctx,
+                                     const std::vector<Uint32>&                 PushConstantResIndices) const;
 
     // Returns the number of inline constant buffers
     Uint32 GetNumInlineConstantBufferAttribs() const { return m_NumInlineConstantBufferAttribs; }

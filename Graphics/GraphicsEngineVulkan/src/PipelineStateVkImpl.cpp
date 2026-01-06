@@ -659,6 +659,18 @@ PipelineResourceSignatureDescWrapper PipelineStateVkImpl::GetDefaultResourceSign
     return SignDesc;
 }
 
+static void VerifyPushConstantInfos(const RefCntAutoPtr<PipelineResourceSignatureVkImpl> pSignatures[],
+                                    const Uint32 SignatureCount,
+                                    const PipelineLayoutVk::PushConstantInfos& PCInfos)
+{
+    for (size_t i = 0; i < PCInfos.size(); ++i)
+    {
+        const auto& PCInfo = PCInfos[i];
+
+        VERIFY_EXPR(PCInfo->Name == pSignatures[PCInfo->SignatureIndex]->GetResourceDesc(PCInfo->ResourceIndex).Name);
+    }
+}
+
 void PipelineStateVkImpl::RemapOrVerifyShaderResources(
     TShaderStages&                                       ShaderStages,
     const RefCntAutoPtr<PipelineResourceSignatureVkImpl> pSignatures[],
@@ -673,8 +685,11 @@ void PipelineStateVkImpl::RemapOrVerifyShaderResources(
     if (PipelineName == nullptr)
         PipelineName = "<null>";
 
-    const PipelineLayoutVk::PushConstantInfo& PushConstant = PipelineLayoutVk::GetPushConstantInfo(pSignatures, SignatureCount);
-    VERIFY_EXPR(!PushConstant || PushConstant.Name == pSignatures[PushConstant.SignatureIndex]->GetResourceDesc(PushConstant.ResourceIndex).Name);
+    PipelineLayoutVk::PushConstantInfos PCInfos;
+
+    PipelineLayoutVk::GetPushConstantInfos(pSignatures, SignatureCount, PCInfos);
+
+    VerifyPushConstantInfos(pSignatures, SignatureCount, PCInfos);
 
     // Verify that pipeline layout is compatible with shader resources and
     // remap resource bindings.
@@ -694,25 +709,31 @@ void PipelineStateVkImpl::RemapOrVerifyShaderResources(
                 continue;
             }
 
-            if (PushConstant && !bVerifyOnly)
+            if (PCInfos.size() > 0 && !bVerifyOnly)
             {
+                const auto& MatchedPCInfo = std::find_if(PCInfos.begin(), PCInfos.end(), [ShaderType](const PipelineLayoutVk::PushConstantInfoPtr& PCInfo) {
+                    return (PCInfo->ShaderStages & ShaderType) == ShaderType; 
+                    });
+
+
                 // Convert the selected uniform buffer to push constant if it is present in the shader
                 // and is not already a push constant.
-                if (pShaderResources->GetResourceByName(SPIRVShaderResourceAttribs::ResourceType::PushConstant, PushConstant.Name.c_str()) == nullptr &&
-                    pShaderResources->GetResourceByName(SPIRVShaderResourceAttribs::ResourceType::UniformBuffer, PushConstant.Name.c_str()) != nullptr)
+                if (MatchedPCInfo != PCInfos.end() &&
+                    pShaderResources->GetResourceByName(SPIRVShaderResourceAttribs::ResourceType::PushConstant, (*MatchedPCInfo)->Name.c_str()) == nullptr &&
+                    pShaderResources->GetResourceByName(SPIRVShaderResourceAttribs::ResourceType::UniformBuffer, (*MatchedPCInfo)->Name.c_str()) != nullptr)
                 {
                     if (pShaderResources->GetNumPushConstants() != 0)
                     {
                         LOG_ERROR_AND_THROW("Shader '", ShaderName, "' already contains push constant '", pShaderResources->GetPushConstant(0).Name,
-                                            "', while pipeline '", PipelineName, "' requires converting uniform buffer '", PushConstant.Name,
+                                            "', while pipeline '", PipelineName, "' requires converting uniform buffer '", (*MatchedPCInfo)->Name,
                                             "' to push constant. Converting push constants to uniform buffers is not supported.");
                     }
 
 #if !DILIGENT_NO_HLSL
-                    std::vector<uint32_t> PatchedSPIRV = ConvertUBOToPushConstants(SPIRV, PushConstant.Name);
+                    std::vector<uint32_t> PatchedSPIRV = ConvertUBOToPushConstants(SPIRV, (*MatchedPCInfo)->Name);
                     if (PatchedSPIRV.empty())
                     {
-                        LOG_ERROR_AND_THROW("Failed to convert uniform buffer '", PushConstant.Name,
+                        LOG_ERROR_AND_THROW("Failed to convert uniform buffer '", (*MatchedPCInfo)->Name,
                                             "' to push constant in shader '", ShaderName, "'");
                     }
 
@@ -750,7 +771,9 @@ void PipelineStateVkImpl::RemapOrVerifyShaderResources(
                     const SHADER_RESOURCE_TYPE           ResType  = SPIRVShaderResourceAttribs::GetShaderResourceType(SPIRVAttribs.Type);
                     const PIPELINE_RESOURCE_FLAGS        Flags    = SPIRVShaderResourceAttribs::GetPipelineResourceFlags(SPIRVAttribs.Type);
 
-                    if (PushConstant && PushConstant.Name == SPIRVAttribs.Name)
+                    if (PCInfos.size() > 0 && 
+                        std::find_if(PCInfos.begin(), PCInfos.end(), [SPIRVAttribs](const PipelineLayoutVk::PushConstantInfoPtr& PCInfo) {
+                            return PCInfo->Name == SPIRVAttribs.Name; }) != PCInfos.end())
                     {
                         // For push constants, skip descriptor set remapping, but validate the resource.
                         if (SPIRVAttribs.Type != SPIRVShaderResourceAttribs::ResourceType::PushConstant)
