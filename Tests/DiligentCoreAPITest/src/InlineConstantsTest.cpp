@@ -912,9 +912,9 @@ TEST_F(InlineConstants, VulkanPushConstantsBlock)
     IShaderResourceVariable* pVar = pPSO->GetStaticVariableByName(SHADER_TYPE_VERTEX, "PushConstants");
     ASSERT_TRUE(pVar);
 
-    pVar->SetInlineConstants(PushConstants_Positions, 0, sizeof(PushConstants_Positions) / sizeof(Uint32));
+    pVar->SetInlineConstants(PushConstants_Positions, 0, sizeof(PushConstants_Positions) / (sizeof(Uint32)));
 
-    pVar->SetInlineConstants(PushConstants_Colors, sizeof(PushConstants_Positions) / sizeof(Uint32), sizeof(PushConstants_Colors) / sizeof(Uint32));
+    pVar->SetInlineConstants(PushConstants_Colors, sizeof(PushConstants_Positions) / (sizeof(Uint32)), sizeof(PushConstants_Colors) / (sizeof(Uint32)));
 
     RefCntAutoPtr<IShaderResourceBinding> pSRB;
     pPSO->CreateShaderResourceBinding(&pSRB, true);
