@@ -1053,7 +1053,7 @@ void PipelineStateVkImpl::DvpValidateResourceLimits() const
             const PipelineResourceSignatureVkImpl::ResourceAttribs& ResAttr   = pSignature->GetResourceAttribs(r);
             const Uint32                                            DescIndex = static_cast<Uint32>(ResAttr.DescrType);
 
-            DescriptorCount[DescIndex] += ResDesc.GetArraySize();
+            DescriptorCount[DescIndex] += ResAttr.ArraySize;
 
             for (SHADER_TYPE ShaderStages = ResDesc.ShaderStages; ShaderStages != 0;)
             {
