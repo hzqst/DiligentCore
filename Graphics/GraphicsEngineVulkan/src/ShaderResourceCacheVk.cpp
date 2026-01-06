@@ -41,51 +41,22 @@
 namespace Diligent
 {
 
-size_t ShaderResourceCacheVk::GetRequiredMemorySize(Uint32                              NumSets,
-                                                    const Uint32*                       SetSizes,
-                                                    const InlineConstantInfoVectorType& InlineConstants)
-{
-    Uint32 TotalInlineConstantBytes = 0;
-    for (const auto& Info : InlineConstants)
-        TotalInlineConstantBytes += Info.NumConstants * sizeof(Uint32);
-
-    return GetRequiredMemorySize(NumSets, SetSizes, TotalInlineConstantBytes);
-}
-
 size_t ShaderResourceCacheVk::GetRequiredMemorySize(Uint32        NumSets,
                                                     const Uint32* SetSizes,
-                                                    Uint32        TotalInlineConstantBytes)
+                                                    Uint32        TotalInlineConstants)
 {
     Uint32 TotalResources = 0;
     for (Uint32 t = 0; t < NumSets; ++t)
         TotalResources += SetSizes[t];
 
-    size_t MemorySize = NumSets * sizeof(DescriptorSet) + TotalResources * sizeof(Resource) + TotalInlineConstantBytes;
+    size_t MemorySize = NumSets * sizeof(DescriptorSet) + TotalResources * sizeof(Resource) + TotalInlineConstants * sizeof(Uint32);
     return MemorySize;
-}
-
-void ShaderResourceCacheVk::InitializeSets(IMemoryAllocator&                   MemAllocator,
-                                           Uint32                              NumSets,
-                                           const Uint32*                       SetSizes,
-                                           const InlineConstantInfoVectorType& InlineConstants)
-{
-    // Calculate total inline constant bytes from the vector
-    Uint32 TotalInlineConstantBytes = 0;
-    for (const auto& Info : InlineConstants)
-        TotalInlineConstantBytes += Info.NumConstants * sizeof(Uint32);
-
-    // Allocate memory only - do NOT call InitializeInlineConstantDataPointers here!
-    // The caller must first call InitializeResources() to construct Resource objects,
-    // then call InitializeInlineConstantDataPointers() to set up the inline constant data pointers.
-    // If we set the pointers here, they will be overwritten when InitializeResources()
-    // uses placement new to construct Resource objects (which initializes pInlineConstantData = nullptr).
-    InitializeSets(MemAllocator, NumSets, SetSizes, TotalInlineConstantBytes);
 }
 
 void ShaderResourceCacheVk::InitializeSets(IMemoryAllocator& MemAllocator,
                                            Uint32            NumSets,
                                            const Uint32*     SetSizes,
-                                           Uint32            TotalInlineConstantBytes)
+                                           Uint32            TotalInlineConstants)
 {
     VERIFY(!m_pMemory, "Memory has already been allocated");
 
@@ -109,10 +80,11 @@ void ShaderResourceCacheVk::InitializeSets(IMemoryAllocator& MemAllocator,
         m_TotalResources += SetSizes[t];
     }
 
-    const size_t MemorySize = NumSets * sizeof(DescriptorSet) + m_TotalResources * sizeof(Resource) + TotalInlineConstantBytes;
-    VERIFY_EXPR(MemorySize == GetRequiredMemorySize(NumSets, SetSizes, TotalInlineConstantBytes));
+    const size_t MemorySize = NumSets * sizeof(DescriptorSet) + m_TotalResources * sizeof(Resource) + TotalInlineConstants * sizeof(Uint32);
+    VERIFY_EXPR(MemorySize == GetRequiredMemorySize(NumSets, SetSizes, TotalInlineConstants));
 #ifdef DILIGENT_DEBUG
     m_DbgInitializedResources.resize(m_NumSets);
+    m_DbgAssignedInlineConstants.resize(TotalInlineConstants);
 #endif
     if (MemorySize > 0)
     {
@@ -132,18 +104,40 @@ void ShaderResourceCacheVk::InitializeSets(IMemoryAllocator& MemAllocator,
             m_DbgInitializedResources[t].resize(SetSizes[t]);
 #endif
         }
-        VERIFY_EXPR(reinterpret_cast<Uint8*>(pCurrResPtr) + TotalInlineConstantBytes == reinterpret_cast<Uint8*>(m_pMemory.get()) + MemorySize);
+        VERIFY_EXPR(reinterpret_cast<Uint8*>(pCurrResPtr) + TotalInlineConstants * sizeof(Uint32) == reinterpret_cast<Uint8*>(m_pMemory.get()) + MemorySize);
     }
+
+    m_HasInlineConstants = TotalInlineConstants > 0 ? 1 : 0;
 }
 
-void ShaderResourceCacheVk::InitializeResources(Uint32 Set, Uint32 Offset, Uint32 ArraySize, DescriptorType Type, bool HasImmutableSampler)
+void ShaderResourceCacheVk::InitializeResources(Uint32         Set,
+                                                Uint32         Offset,
+                                                Uint32         ArraySize,
+                                                DescriptorType Type,
+                                                bool           HasImmutableSampler,
+                                                Uint32         InlineConstantOffset,
+                                                Uint32         DbgNumInlineConstants)
 {
     DescriptorSet& DescrSet = GetDescriptorSet(Set);
     for (Uint32 res = 0; res < ArraySize; ++res)
     {
-        new (&DescrSet.GetResource(Offset + res)) Resource{Type, HasImmutableSampler};
+        new (&DescrSet.GetResource(Offset + res)) Resource{
+            Type,
+            HasImmutableSampler,
+            InlineConstantOffset != ~0u ? GetInlineConstantStorage(InlineConstantOffset) : nullptr,
+        };
 #ifdef DILIGENT_DEBUG
         m_DbgInitializedResources[Set][size_t{Offset} + res] = true;
+
+        if (InlineConstantOffset != ~0u)
+        {
+            VERIFY(InlineConstantOffset + DbgNumInlineConstants <= m_DbgAssignedInlineConstants.size(), "Inline constant storage overflow");
+            for (Uint32 i = 0; i < DbgNumInlineConstants; ++i)
+            {
+                VERIFY(!m_DbgAssignedInlineConstants[InlineConstantOffset + i], "Inline constant storage at offset ", InlineConstantOffset + i, " has already been assigned");
+                m_DbgAssignedInlineConstants[InlineConstantOffset + i] = true;
+            }
+        }
 #endif
     }
 }
@@ -207,6 +201,10 @@ void ShaderResourceCacheVk::DbgVerifyResourceInitialization() const
     {
         for (bool ResInitialized : SetFlags)
             VERIFY(ResInitialized, "Not all resources in the cache have been initialized. This is a bug.");
+    }
+    for (bool InlineConstAssigned : m_DbgAssignedInlineConstants)
+    {
+        VERIFY(InlineConstAssigned, "Not all inline constant storage has been assigned. This is a bug.");
     }
 }
 
@@ -999,43 +997,12 @@ void ShaderResourceCacheVk::SetInlineConstants(Uint32      DescrSetIndex,
     DescriptorSet& DescrSet = GetDescriptorSet(DescrSetIndex);
     Resource&      DstRes   = DescrSet.GetResource(CacheOffset);
 
-    VERIFY(DstRes.pInlineConstantData != nullptr, "Inline constant data pointer is null. "
-                                                  "Make sure InitializeSets was called with InlineConstants info for this resource.");
+    VERIFY(DstRes.pInlineConstantData != nullptr,
+           "Inline constant data pointer is null. Make sure InitializeResources was called with proper InlineConstantOffset for this resource.");
 
     // Copy to CPU-side staging buffer
     Uint32* pDstConstants = reinterpret_cast<Uint32*>(DstRes.pInlineConstantData);
     memcpy(pDstConstants + FirstConstant, pConstants, NumConstants * sizeof(Uint32));
-}
-
-const void* ShaderResourceCacheVk::GetInlineConstantData(Uint32 DescrSetIndex, Uint32 CacheOffset) const
-{
-    const DescriptorSet& DescrSet = GetDescriptorSet(DescrSetIndex);
-
-    VERIFY(CacheOffset < DescrSet.GetSize(), "CacheOffset out of bounds");
-
-    const Resource& Res = DescrSet.GetResource(CacheOffset);
-    if (Res.pInlineConstantData != nullptr)
-    {
-        return Res.pInlineConstantData;
-    }
-
-    return nullptr;
-}
-
-void ShaderResourceCacheVk::InitializeInlineConstantDataPointers(const InlineConstantInfoVectorType& InlineConstants)
-{
-    if (InlineConstants.empty())
-        return;
-
-    Uint8* pCurrInlineConstStorage = reinterpret_cast<Uint8*>(GetInlineConstantStorage());
-    for (const InlineConstantParamInfo& Info : InlineConstants)
-    {
-        DescriptorSet& DescrSet = GetDescriptorSet(Info.DescrSetIndex);
-        Resource&      Res      = DescrSet.GetResource(Info.CacheOffset);
-        Res.pInlineConstantData = pCurrInlineConstStorage;
-        pCurrInlineConstStorage += Info.NumConstants * sizeof(Uint32);
-    }
-    m_HasInlineConstants = 1;
 }
 
 } // namespace Diligent
