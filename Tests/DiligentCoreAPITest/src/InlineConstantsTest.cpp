@@ -101,7 +101,7 @@ float4 main(in PSInput PSIn) : SV_Target
 )"};
 
 const std::string VulkanPushConstants_VS{
-R"(
+    R"(
 struct PushConstants_t
 {
     float4 g_Positions[6];
@@ -124,7 +124,7 @@ void main(uint VertexId : SV_VertexId, out PSInput PSIn)
 )"};
 
 const std::string VulkanPushConstants_PS{
-R"(
+    R"(
 struct PSInput
 {
     float4 Pos   : SV_POSITION;
