@@ -114,6 +114,45 @@ bool PipelineLayoutVk::GetPushConstantInfos(
         }
     }
 
+    // Merge overlapping push constant ranges into a single range.
+    // Vulkan spec (VUID-VkPipelineLayoutCreateInfo-pPushConstantRanges-00292) requires that
+    // any two elements of pPushConstantRanges must not include the same stage in stageFlags.
+    // Additionally, VUID-vkCmdPushConstants-offset-01796 requires that when calling vkCmdPushConstants,
+    // stageFlags must include all stages from overlapping VkPushConstantRange entries.
+    // To satisfy both requirements, we merge overlapping ranges into a single range with combined stageFlags.
+    for (size_t i = 0; i < OutPCInfos.size(); ++i)
+    {
+        for (size_t j = i + 1; j < OutPCInfos.size();)
+        {
+            // Check for overlap: ranges overlap if they share any bytes
+            const Uint32 Start1 = OutPCInfos[i]->vkRange.offset;
+            const Uint32 End1   = OutPCInfos[i]->vkRange.offset + OutPCInfos[i]->vkRange.size;
+            const Uint32 Start2 = OutPCInfos[j]->vkRange.offset;
+            const Uint32 End2   = OutPCInfos[j]->vkRange.offset + OutPCInfos[j]->vkRange.size;
+
+            // Ranges overlap if: Start1 < End2 && Start2 < End1
+            if (Start1 < End2 && Start2 < End1)
+            {
+                // Merge range j into range i
+                // Expand the range to cover both
+                const Uint32 NewStart = std::min(Start1, Start2);
+                const Uint32 NewEnd   = std::max(End1, End2);
+                OutPCInfos[i]->vkRange.offset = NewStart;
+                OutPCInfos[i]->vkRange.size   = NewEnd - NewStart;
+                OutPCInfos[i]->vkRange.stageFlags |= OutPCInfos[j]->vkRange.stageFlags;
+                OutPCInfos[i]->ShaderStages |= OutPCInfos[j]->ShaderStages;
+
+                // Remove the merged range
+                OutPCInfos.erase(OutPCInfos.begin() + j);
+                // Don't increment j, check the new element at this position
+            }
+            else
+            {
+                ++j;
+            }
+        }
+    }
+
     return PushConstantName.empty() ? false : true;
 }
 
