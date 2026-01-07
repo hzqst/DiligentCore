@@ -101,11 +101,6 @@ PipelineLayoutVk::PushConstantInfo PipelineLayoutVk::GetPushConstantInfo(
         }
     }
 
-    if (PCInfo)
-    {
-        //TODO: merge PCInfo.vkRange.stageFlags with other ResDesc(s) that matches "ResDesc.Name == PCInfo.Name && ResDesc.ArraySize * sizeof(Uint32) == PCInfo.vkRange.size" 
-    }
-
     return PCInfo;
 }
 
