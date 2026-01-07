@@ -71,9 +71,11 @@ PipelineLayoutVk::PushConstantInfo PipelineLayoutVk::GetPushConstantInfo(
         if (pSignature == nullptr)
             continue;
 
-        // Vulkan allows only one push constant range per pipeline layout.
+        // Vulkan allows only one push constant block per pipeline layout but multiple push constant ranges.
         // Diligent API allows multiple inline constant resources, so we promote only the first inline constant
         // from resource signatures to push constants. Other inline constants remain uniform buffers.
+        // However, if the same push constant (same name and size) is declared in multiple shader stages
+        // (e.g., both VS and PS with [[vk::push_constant]]), we merge the stage flags.
         if (pSignature->HasInlineConstants())
         {
             for (Uint32 r = 0; r < pSignature->GetTotalResourceCount(); ++r)
@@ -81,23 +83,50 @@ PipelineLayoutVk::PushConstantInfo PipelineLayoutVk::GetPushConstantInfo(
                 const PipelineResourceDesc& ResDesc = pSignature->GetResourceDesc(r);
                 if (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
                 {
-                    PCInfo.Name = ResDesc.Name;
-
                     // For inline constants, ArraySize contains the number of 32-bit constants.
                     VERIFY_EXPR(ResDesc.ArraySize > 0);
-                    PCInfo.vkRange.size       = ResDesc.ArraySize * sizeof(Uint32);
-                    PCInfo.vkRange.offset     = 0;
-                    PCInfo.vkRange.stageFlags = ShaderTypesToVkShaderStageFlags(ResDesc.ShaderStages);
+                    const VkDeviceSize Size = ResDesc.ArraySize * sizeof(Uint32);
 
-                    PCInfo.SignatureIndex = BindInd;
-                    PCInfo.ResourceIndex  = r;
+                    if (PCInfo)
+                    {
+                        // We already have a push constant - check if this one can be merged
+                        if (PCInfo.Name == ResDesc.Name)
+                        {
+                            if (PCInfo.vkRange.size == Size)
+                            {
+                                // Same name and size - merge the stage flags
+                                PCInfo.vkRange.stageFlags |= ShaderTypesToVkShaderStageFlags(ResDesc.ShaderStages);
+                            }
+                            else
+                            {
+                                LOG_ERROR_AND_THROW("Push constant '", ResDesc.Name, "' is declared with different sizes in different shader stages: ",
+                                                    PCInfo.vkRange.size, " bytes vs ", Size, " bytes. "
+                                                    "Push constants with the same name must have the same size across all shader stages.");
+                            }
+                        }
+                        // Different name - skip this inline constant, it will remain as a uniform buffer
+                    }
+                    else
+                    {
+                        // First push constant found
+                        PCInfo.Name = ResDesc.Name;
 
-                    break;
+                        PCInfo.vkRange.size       = Size;
+                        PCInfo.vkRange.offset     = 0;
+                        PCInfo.vkRange.stageFlags = ShaderTypesToVkShaderStageFlags(ResDesc.ShaderStages);
+
+                        PCInfo.SignatureIndex = BindInd;
+                        PCInfo.ResourceIndex  = r;
+                    }
                 }
             }
 
-            VERIFY(PCInfo, "pSignature->HasInlineConstants() returned true, but no inline constant resource was found. This is a bug.");
-            break;
+            if (PCInfo)
+            {
+                // Found push constant(s) in this signature - don't look in other signatures
+                // as we only support one push constant range per pipeline layout
+                break;
+            }
         }
     }
 
