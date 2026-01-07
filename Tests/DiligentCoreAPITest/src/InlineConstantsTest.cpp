@@ -125,6 +125,15 @@ void main(uint VertexId : SV_VertexId, out PSInput PSIn)
 
 const std::string VulkanPushConstants_PS{
     R"(
+struct PushConstants_t
+{
+    float4 g_Positions[6];
+    float4 g_Colors[4];
+};
+
+[[vk::push_constant]] ConstantBuffer<PushConstants_t> PushConstants;
+
+
 struct PSInput
 {
     float4 Pos   : SV_POSITION;
@@ -133,7 +142,7 @@ struct PSInput
 
 float4 main(in PSInput PSIn) : SV_Target
 {
-    return PSIn.Color;
+    return PushConstants.g_Colors[PSIn.VertexId % 3];
 }
 )"};
 
@@ -865,6 +874,7 @@ TEST_F(InlineConstants, VulkanPushConstantsBlock)
 
     // Find VS and PS push constants in the resource signature
     const PipelineResourceDesc* pVSPushConst = nullptr;
+    const PipelineResourceDesc* pPSPushConst = nullptr;
 
     for (Uint32 i = 0; i < SignDesc.NumResources; ++i)
     {
@@ -873,6 +883,12 @@ TEST_F(InlineConstants, VulkanPushConstantsBlock)
             strcmp(Res.Name, "PushConstants") == 0)
         {
             pVSPushConst = &Res;
+        }
+
+        if (Res.ShaderStages == SHADER_TYPE_PIXEL &&
+            strcmp(Res.Name, "PushConstants") == 0)
+        {
+            pPSPushConst = &Res;
         }
     }
 
@@ -889,20 +905,24 @@ TEST_F(InlineConstants, VulkanPushConstantsBlock)
         float4{1.f, 0.f, 0.f, 1.f},
         float4{0.f, 1.f, 0.f, 1.f},
         float4{0.f, 0.f, 1.f, 1.f},
-        float4{1.f, 1.f, 1.f, 1.f},
+        float4{1.0f, 1.0f, 1.0f, 1.0f},
     };
 
     ASSERT_TRUE(pVSPushConst != nullptr) << "VS PushConstants not found in resource signature";
+    ASSERT_TRUE(pPSPushConst != nullptr) << "PS PushConstants not found in resource signature";
 
     // Verify inline constants flag
     EXPECT_EQ(pVSPushConst->Flags, PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS);
+    EXPECT_EQ(pPSPushConst->Flags, PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS);
 
     // Verify ArraySize matches
-    EXPECT_EQ(pVSPushConst->ArraySize, (sizeof(PushConstants_Positions) + sizeof(PushConstants_Colors)) / sizeof(Uint32))
+    EXPECT_EQ(pVSPushConst->ArraySize, (sizeof(PushConstants_Positions) + sizeof(PushConstants_Colors)) / (sizeof(Uint32)))
+        << "VS push constants should have 24 + 12 = 36 constants (6 float4 for PushConstants.g_Positions, 4 float4 for PushConstants.g_Colors)";
+    EXPECT_EQ(pPSPushConst->ArraySize, (sizeof(PushConstants_Positions) + sizeof(PushConstants_Colors)) / (sizeof(Uint32)))
         << "VS push constants should have 24 + 12 = 36 constants (6 float4 for PushConstants.g_Positions, 4 float4 for PushConstants.g_Colors)";
 
     // Now test runtime usage
-    const float ClearColor[] = {0.1f, 0.1f, 0.1f, 1.0f};
+    const float ClearColor[] = {sm_Rnd(), sm_Rnd(), sm_Rnd(), sm_Rnd()};
     RenderDrawCommandReference(pSwapChain, ClearColor);
 
     ITextureView* pRTVs[] = {pSwapChain->GetCurrentBackBufferRTV()};
