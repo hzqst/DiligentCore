@@ -154,6 +154,12 @@ public:
     void CommitDynamicResources(const ShaderResourceCacheVk& ResourceCache,
                                 VkDescriptorSet              vkDynamicDescriptorSet) const;
 
+    // Returns the number of inline constant buffers
+    Uint32 GetNumInlineConstantBuffers() const { return m_NumInlineConstantBuffers; }
+
+    // Returns the inline constant buffer attributes
+    const InlineConstantBufferAttribsVk* GetInlineConstantBuffers() const { return m_InlineConstantBuffers.get(); }
+
     // Updates inline constant buffers by mapping the internal buffers and copying data from the resource cache
     // ResourceCache must be valid - each SRB has its own copy of inline constant data stored in the cache
     // PushConstantResIndex: Resource index of the inline constant selected as push constant by PSO
@@ -161,12 +167,6 @@ public:
     void UpdateInlineConstantBuffers(const ShaderResourceCacheVk& ResourceCache,
                                      DeviceContextVkImpl&         Ctx,
                                      Uint32                       PushConstantResIndex) const;
-
-    // Returns the number of inline constant buffers
-    Uint32 GetNumInlineConstantBufferAttribs() const { return m_NumInlineConstantBufferAttribs; }
-
-    // Returns the inline constant buffer attributes
-    const InlineConstantBufferAttribsVk* GetInlineConstantBufferAttribs() const { return m_InlineConstantBufferAttribs.get(); }
 
     // Returns push constant data from the resource cache for the specified resource index
     const void* GetPushConstantData(const ShaderResourceCacheVk& ResourceCache, Uint32 ResIndex) const;
@@ -189,7 +189,7 @@ public:
 
     bool HasInlineConstants() const
     {
-        return m_NumInlineConstantBufferAttribs != 0;
+        return m_NumInlineConstantBuffers != 0;
     }
 
 private:
@@ -237,13 +237,13 @@ private:
     Uint16 m_DynamicStorageBufferCount = 0;
 
     // Number of inline constant buffers
-    Uint16 m_NumInlineConstantBufferAttribs = 0;
+    Uint16 m_NumInlineConstantBuffers = 0;
 
     // The total number of inline constants (32-bit values) in all inline constant buffers
     Uint16 m_TotalInlineConstants = 0;
 
     // Inline constant buffer attributes
-    std::unique_ptr<InlineConstantBufferAttribsVk[]> m_InlineConstantBufferAttribs;
+    std::unique_ptr<InlineConstantBufferAttribsVk[]> m_InlineConstantBuffers;
 };
 
 template <> Uint32 PipelineResourceSignatureVkImpl::GetDescriptorSetIndex<PipelineResourceSignatureVkImpl::DESCRIPTOR_SET_ID_STATIC_MUTABLE>() const;
