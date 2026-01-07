@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -78,7 +78,7 @@ PipelineResourceSignatureD3D11Impl::PipelineResourceSignatureD3D11Impl(IReferenc
             },
             [this]() //
             {
-                return ShaderResourceCacheD3D11::GetRequiredMemorySize(m_ResourceCounters);
+                return ShaderResourceCacheD3D11::GetRequiredMemorySize(m_ResourceCounters, m_InlineConstantBuffers.get(), m_NumInlineConstantBuffers);
             });
     }
     catch (...)
@@ -261,18 +261,7 @@ void PipelineResourceSignatureD3D11Impl::CreateLayout(const bool IsSerialized)
                 // which will allow skipping buffer update if the inline constants are not changed.
                 // However, this will increase memory consumption as each SRB will have its own copy of the inline CB.
                 // Besides, inline constants are expected to change frequently, so skipping updates is unlikely.
-                if (m_pDevice)
-                {
-                    std::string Name = m_Desc.Name;
-                    Name += " - ";
-                    Name += ResDesc.Name;
-                    BufferDesc CBDesc{Name.c_str(), ResDesc.ArraySize * sizeof(Uint32), BIND_UNIFORM_BUFFER, USAGE_DYNAMIC, CPU_ACCESS_WRITE};
-
-                    RefCntAutoPtr<IBuffer> pBuffer;
-                    m_pDevice->CreateBuffer(CBDesc, nullptr, &pBuffer);
-                    VERIFY_EXPR(pBuffer);
-                    InlineCBAttribs.pBuffer = pBuffer.RawPtr<BufferD3D11Impl>();
-                }
+                InlineCBAttribs.pBuffer = CreateInlineConstantBuffer(ResDesc.Name, ResDesc.ArraySize);
             }
         }
         else
@@ -649,7 +638,7 @@ PipelineResourceSignatureD3D11Impl::PipelineResourceSignatureD3D11Impl(IReferenc
             },
             [this]() //
             {
-                return ShaderResourceCacheD3D11::GetRequiredMemorySize(m_ResourceCounters);
+                return ShaderResourceCacheD3D11::GetRequiredMemorySize(m_ResourceCounters, m_InlineConstantBuffers.get(), m_NumInlineConstantBuffers);
             });
     }
     catch (...)
