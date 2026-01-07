@@ -1,5 +1,5 @@
 /*
- *  Copyright 2025 Diligent Graphics LLC
+ *  Copyright 2025-2026 Diligent Graphics LLC
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -269,7 +269,8 @@ TEST_F(InlineConstants, ResourceLayout)
                 .SetPrimitiveTopology(PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
                 .AddShader(sm_Res.pVS)
                 .AddShader(sm_Res.pPS)
-                .SetResourceLayout(ResLayoutDesc);
+                .SetResourceLayout(ResLayoutDesc)
+                .SetSRBAllocationGranularity(4);
             PsoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
 
             RefCntAutoPtr<IPipelineState> pPSO;
@@ -395,6 +396,8 @@ void InlineConstants::TestSignatures(Uint32 NumSignatures)
                 .AddResource(SHADER_TYPE_VERTEX, "tex0_dyn", SHADER_RESOURCE_TYPE_TEXTURE_SRV, SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC)
 
                 .AddResource(SHADER_TYPE_VERTEX, "cbInlinePositions", kNumPosConstants, SHADER_RESOURCE_TYPE_CONSTANT_BUFFER, PosType, PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS);
+
+            SignDesc.SetSRBAllocationGranularity(4);
 
             if (NumSignatures == 2)
             {
@@ -905,7 +908,7 @@ TEST_F(InlineConstants, VulkanPushConstantsBlock)
         float4{1.f, 0.f, 0.f, 1.f},
         float4{0.f, 1.f, 0.f, 1.f},
         float4{0.f, 0.f, 1.f, 1.f},
-        float4{1.0f, 1.0f, 1.0f, 1.0f},
+        float4{1.f, 1.f, 1.f, 1.f},
     };
 
     ASSERT_TRUE(pVSPushConst != nullptr) << "VS PushConstants not found in resource signature";

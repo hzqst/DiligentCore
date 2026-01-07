@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2023 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -467,6 +467,7 @@ TEST(GraphicsTypesXTest, PipelineResourceSignatureDescX)
     Ref.BindingIndex               = 4;
     Ref.CombinedSamplerSuffix      = "Suffix";
     Ref.UseCombinedTextureSamplers = true;
+    Ref.SRBAllocationGranularity   = 8;
     Ref.NumResources               = _countof(Resources);
     Ref.Resources                  = Resources;
     TestCtorsAndAssignments<PipelineResourceSignatureDescX>(Ref);
@@ -498,6 +499,7 @@ TEST(GraphicsTypesXTest, PipelineResourceSignatureDescX)
             .SetName(Pool("Test"))
             .SetCombinedSamplerSuffix(Pool("Suffix"))
             .SetBindingIndex(4)
+            .SetSRBAllocationGranularity(8)
             .SetUseCombinedTextureSamplers(true);
         Pool.Clear();
         EXPECT_EQ(DescX, Ref);
@@ -519,6 +521,7 @@ TEST(GraphicsTypesXTest, PipelineResourceSignatureDescX)
         Pool.Clear();
         DescX.BindingIndex               = 4;
         DescX.UseCombinedTextureSamplers = true;
+        DescX.SRBAllocationGranularity   = 8;
         DescX
             .AddResource({RES1(Pool)})
             .AddResource(RES2(Pool))
