@@ -63,6 +63,8 @@ PipelineLayoutVk::PushConstantInfo PipelineLayoutVk::GetPushConstantInfo(
     const RefCntAutoPtr<PipelineResourceSignatureVkImpl>* ppSignatures,
     Uint32                                                SignatureCount)
 {
+    //TODO: Merge ShaderStages when we have multiple shader stages accessing the same PushConstants.
+
     PushConstantInfo PCInfo;
     for (Uint32 BindInd = 0; BindInd < SignatureCount; ++BindInd)
     {

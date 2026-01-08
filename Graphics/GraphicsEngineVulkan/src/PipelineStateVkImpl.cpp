@@ -585,6 +585,45 @@ size_t PipelineStateVkImpl::ShaderStageInfo::Count() const
     return Items.size();
 }
 
+PipelineStateVkImpl::SPIRVPushConstantInfo PipelineStateVkImpl::GetSPIRVPushConstantInfo(const TShaderStages& ShaderStages)
+{
+    PipelineStateVkImpl::SPIRVPushConstantInfo PCInfo;
+
+    //Merge ShaderStages when we have multiple shader stages accessing the same PushConstants.
+    for (const ShaderStageInfo& Stage : ShaderStages)
+    {
+        for (const ShaderStageInfo::Item& StageItem : Stage.Items)
+        {
+            const SPIRVShaderResources& ShaderResources = *StageItem.pShader->GetShaderResources();
+            ShaderResources.ProcessResources(
+                [&](const SPIRVShaderResourceAttribs& Attribs, Uint32) //
+                {
+                    if (Attribs.Type == SPIRVShaderResourceAttribs::ResourceType::PushConstant)
+                    {
+                        if (PCInfo.Name.empty())
+                        {
+                            PCInfo.Name       = Attribs.Name;
+                            PCInfo.Size = Attribs.BufferStaticSize;
+                            PCInfo.ShaderStages = Stage.Type;
+                        }
+                        else if (PCInfo.Name == Attribs.Name)
+                        {
+                            //TODO: verify if Attribs.BufferStaticSize == PCInfo.Size
+
+                            PCInfo.ShaderStages |= Stage.Type;
+                        }
+                        else
+                        {
+                            //TODO: LOG_ERROR_AND_THROW because we don't allow second PushConstants in a SPIRVShaderResources
+                        }
+                    }
+                });
+        }
+    }
+
+    return PCInfo;
+}
+
 PipelineResourceSignatureDescWrapper PipelineStateVkImpl::GetDefaultResourceSignatureDesc(
     const TShaderStages&              ShaderStages,
     const char*                       PSOName,
@@ -592,6 +631,8 @@ PipelineResourceSignatureDescWrapper PipelineStateVkImpl::GetDefaultResourceSign
     Uint32                            SRBAllocationGranularity) noexcept(false)
 {
     PipelineResourceSignatureDescWrapper SignDesc{PSOName, ResourceLayout, SRBAllocationGranularity};
+
+    PipelineStateVkImpl::SPIRVPushConstantInfo PCInfo = GetSPIRVPushConstantInfo(ShaderStages);
 
     std::unordered_map<ShaderResourceHashKey, const SPIRVShaderResourceAttribs&, ShaderResourceHashKey::Hasher> UniqueResources;
     for (const ShaderStageInfo& Stage : ShaderStages)
@@ -617,7 +658,14 @@ PipelineResourceSignatureDescWrapper PipelineStateVkImpl::GetDefaultResourceSign
                         ShaderResources.GetCombinedSamplerSuffix() :
                         nullptr;
 
-                    const ShaderResourceVariableDesc VarDesc = FindPipelineResourceLayoutVariable(ResourceLayout, Attribs.Name, Stage.Type, SamplerSuffix);
+                    ShaderResourceVariableDesc VarDesc = FindPipelineResourceLayoutVariable(ResourceLayout, Attribs.Name, Stage.Type, SamplerSuffix);
+
+                    if (PCInfo.Name == Attribs.Name)
+                    {
+                        //Use merged ShaderStages for PushConstants
+                        VarDesc.ShaderStages = PCInfo.ShaderStages;
+                    }
+
                     // Note that Attribs.Name != VarDesc.Name for combined samplers
                     const auto it_assigned = UniqueResources.emplace(ShaderResourceHashKey{VarDesc.ShaderStages, Attribs.Name}, Attribs);
                     if (it_assigned.second)

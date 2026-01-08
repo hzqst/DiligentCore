@@ -98,6 +98,19 @@ public:
     };
     using TShaderStages = std::vector<ShaderStageInfo>;
 
+    struct SPIRVPushConstantInfo
+    {
+        SHADER_TYPE ShaderStages = SHADER_TYPE_UNKNOWN;
+        Uint32 Size = 0;
+        std::string Name;
+
+        Uint32 SignatureIndex = ~0u;
+        Uint32 ResourceIndex  = ~0u;
+
+        constexpr explicit operator bool() const { return Size != 0; }
+    };
+
+    static SPIRVPushConstantInfo GetSPIRVPushConstantInfo(const TShaderStages& ShaderStages);
 #ifdef DILIGENT_DEVELOPMENT
     // Performs validation of SRB resource parameters that are not possible to validate
     // when resource is bound.
