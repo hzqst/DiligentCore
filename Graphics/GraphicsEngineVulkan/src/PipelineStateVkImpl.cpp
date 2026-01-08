@@ -602,19 +602,27 @@ PipelineStateVkImpl::SPIRVPushConstantInfo PipelineStateVkImpl::GetSPIRVPushCons
                     {
                         if (PCInfo.Name.empty())
                         {
-                            PCInfo.Name       = Attribs.Name;
-                            PCInfo.Size = Attribs.BufferStaticSize;
+                            PCInfo.Name         = Attribs.Name;
+                            PCInfo.Size         = Attribs.BufferStaticSize;
                             PCInfo.ShaderStages = Stage.Type;
                         }
                         else if (PCInfo.Name == Attribs.Name)
                         {
-                            //TODO: verify if Attribs.BufferStaticSize == PCInfo.Size
-
+                            // Same push constant found in another shader stage - verify size and merge stage flags
+                            if (PCInfo.Size != Attribs.BufferStaticSize)
+                            {
+                                LOG_ERROR_AND_THROW("Push constant '", Attribs.Name,
+                                                    "' has different sizes in different shader stages: ",
+                                                    PCInfo.Size, " vs ", Attribs.BufferStaticSize,
+                                                    ". Push constants must have the same size across all shader stages.");
+                            }
                             PCInfo.ShaderStages |= Stage.Type;
                         }
                         else
                         {
-                            //TODO: LOG_ERROR_AND_THROW because we don't allow second PushConstants in a SPIRVShaderResources
+                            LOG_ERROR_AND_THROW("Multiple push constants with different names are not supported. ",
+                                                "Found '", PCInfo.Name, "' and '", Attribs.Name, "'. ",
+                                                "Vulkan only allows one push constant block per pipeline layout.");
                         }
                     }
                 });
@@ -660,7 +668,7 @@ PipelineResourceSignatureDescWrapper PipelineStateVkImpl::GetDefaultResourceSign
 
                     ShaderResourceVariableDesc VarDesc = FindPipelineResourceLayoutVariable(ResourceLayout, Attribs.Name, Stage.Type, SamplerSuffix);
 
-                    if (PCInfo.Name == Attribs.Name)
+                    if (PCInfo && PCInfo.Name == Attribs.Name)
                     {
                         //Use merged ShaderStages for PushConstants
                         VarDesc.ShaderStages = PCInfo.ShaderStages;

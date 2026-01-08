@@ -133,7 +133,6 @@ struct PushConstants_t
 
 [[vk::push_constant]] ConstantBuffer<PushConstants_t> PushConstants;
 
-
 struct PSInput
 {
     float4 Pos   : SV_POSITION;
@@ -142,7 +141,9 @@ struct PSInput
 
 float4 main(in PSInput PSIn) : SV_Target
 {
-    return PushConstants.g_Colors[PSIn.VertexId % 3];
+    // Use push constants from PS to apply alpha modulation
+    // This ensures both VS and PS access the same PushConstants
+    return PSIn.Color * PushConstants.g_Colors[3];
 }
 )"};
 
@@ -876,22 +877,15 @@ TEST_F(InlineConstants, VulkanPushConstantsBlock)
     const PipelineResourceSignatureDesc& SignDesc = pSign->GetDesc();
 
     // Find VS and PS push constants in the resource signature
-    const PipelineResourceDesc* pVSPushConst = nullptr;
-    const PipelineResourceDesc* pPSPushConst = nullptr;
+    const PipelineResourceDesc* PushConstantsDesc = nullptr;
 
     for (Uint32 i = 0; i < SignDesc.NumResources; ++i)
     {
         const auto& Res = SignDesc.Resources[i];
-        if (Res.ShaderStages == SHADER_TYPE_VERTEX &&
+        if (Res.ShaderStages == SHADER_TYPE_VS_PS &&
             strcmp(Res.Name, "PushConstants") == 0)
         {
-            pVSPushConst = &Res;
-        }
-
-        if (Res.ShaderStages == SHADER_TYPE_PIXEL &&
-            strcmp(Res.Name, "PushConstants") == 0)
-        {
-            pPSPushConst = &Res;
+            PushConstantsDesc = &Res;
         }
     }
 
@@ -911,17 +905,13 @@ TEST_F(InlineConstants, VulkanPushConstantsBlock)
         float4{1.f, 1.f, 1.f, 1.f},
     };
 
-    ASSERT_TRUE(pVSPushConst != nullptr) << "VS PushConstants not found in resource signature";
-    ASSERT_TRUE(pPSPushConst != nullptr) << "PS PushConstants not found in resource signature";
+    ASSERT_TRUE(PushConstantsDesc != nullptr) << "PushConstants not found in resource signature";
 
     // Verify inline constants flag
-    EXPECT_EQ(pVSPushConst->Flags, PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS);
-    EXPECT_EQ(pPSPushConst->Flags, PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS);
+    EXPECT_EQ(PushConstantsDesc->Flags, PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS);
 
     // Verify ArraySize matches
-    EXPECT_EQ(pVSPushConst->ArraySize, (sizeof(PushConstants_Positions) + sizeof(PushConstants_Colors)) / (sizeof(Uint32)))
-        << "VS push constants should have 24 + 12 = 36 constants (6 float4 for PushConstants.g_Positions, 4 float4 for PushConstants.g_Colors)";
-    EXPECT_EQ(pPSPushConst->ArraySize, (sizeof(PushConstants_Positions) + sizeof(PushConstants_Colors)) / (sizeof(Uint32)))
+    EXPECT_EQ(PushConstantsDesc->ArraySize, (sizeof(PushConstants_Positions) + sizeof(PushConstants_Colors)) / (sizeof(Uint32)))
         << "VS push constants should have 24 + 12 = 36 constants (6 float4 for PushConstants.g_Positions, 4 float4 for PushConstants.g_Colors)";
 
     // Now test runtime usage
@@ -932,12 +922,17 @@ TEST_F(InlineConstants, VulkanPushConstantsBlock)
     pContext->SetRenderTargets(1, pRTVs, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     pContext->ClearRenderTarget(pRTVs[0], ClearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-    IShaderResourceVariable* pVar = pPSO->GetStaticVariableByName(SHADER_TYPE_VERTEX, "PushConstants");
-    ASSERT_TRUE(pVar);
+    //They should all goes with resource[0] ("PushConstants") under the hood:
 
-    pVar->SetInlineConstants(PushConstants_Positions, 0, sizeof(PushConstants_Positions) / (sizeof(Uint32)));
+    IShaderResourceVariable* pVSVar = pPSO->GetStaticVariableByName(SHADER_TYPE_VERTEX, "PushConstants");
+    ASSERT_TRUE(pVSVar);
 
-    pVar->SetInlineConstants(PushConstants_Colors, sizeof(PushConstants_Positions) / (sizeof(Uint32)), sizeof(PushConstants_Colors) / (sizeof(Uint32)));
+    pVSVar->SetInlineConstants(PushConstants_Positions, 0, sizeof(PushConstants_Positions) / (sizeof(Uint32)));
+
+    IShaderResourceVariable* pPSVar = pPSO->GetStaticVariableByName(SHADER_TYPE_PIXEL, "PushConstants");
+    ASSERT_TRUE(pPSVar);
+
+    pPSVar->SetInlineConstants(PushConstants_Colors, sizeof(PushConstants_Positions) / (sizeof(Uint32)), sizeof(PushConstants_Colors) / (sizeof(Uint32)));
 
     RefCntAutoPtr<IShaderResourceBinding> pSRB;
     pPSO->CreateShaderResourceBinding(&pSRB, true);
