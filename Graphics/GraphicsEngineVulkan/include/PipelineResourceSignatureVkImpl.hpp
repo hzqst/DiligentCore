@@ -68,10 +68,11 @@ ASSERT_SIZEOF(ImmutableSamplerAttribsVk, 8, "The struct is used in serialization
 /// one inline constant is selected to be the native push constant block.
 struct InlineConstantBufferAttribsVk
 {
-    Uint32 ResIndex     = 0; // Resource index in the signature
-    Uint32 DescrSet     = 0; // Descriptor set index
-    Uint32 BindingIndex = 0; // Binding index within the descriptor set
-    Uint32 NumConstants = 0; // Number of 32-bit constants
+    Uint32 ResIndex       = 0; // Resource index in the signature
+    Uint32 DescrSet       = 0; // Descriptor set index
+    Uint32 BindingIndex   = 0; // Binding index within the descriptor set
+    Uint32 NumConstants   = 0; // Number of 32-bit constants
+    Uint32 SRBCacheOffset = 0; // Offset in the SRB resource cache
 
     // Shared buffer created in the Signature.
     // All SRBs reference this same buffer to reduce memory usage.
@@ -154,16 +155,17 @@ public:
     void CommitDynamicResources(const ShaderResourceCacheVk& ResourceCache,
                                 VkDescriptorSet              vkDynamicDescriptorSet) const;
 
-    // Updates inline constant buffers by mapping the internal buffers and copying data from the resource cache
-    // ResourceCache must be valid - each SRB has its own copy of inline constant data stored in the cache
-    // PushConstantResIndex: Resource index of the inline constant selected as push constant by PSO
-    //                       Pass ~0u if no push constant is selected from this signature
-    void UpdateInlineConstantBuffers(const ShaderResourceCacheVk& ResourceCache,
-                                     DeviceContextVkImpl&         Ctx,
-                                     Uint32                       PushConstantResIndex) const;
-
-    // Returns push constant data from the resource cache for the specified resource index
-    const void* GetPushConstantData(const ShaderResourceCacheVk& ResourceCache, Uint32 ResIndex) const;
+    struct CommitInlineConstantsAttribs
+    {
+        DeviceContextVkImpl&         Ctx;
+        VkPipelineLayout             vkPipelineLayout     = VK_NULL_HANDLE;
+        VkPushConstantRange          vkPushConstRange     = {};
+        const ShaderResourceCacheVk* pResourceCache       = nullptr;
+        Uint32                       PushConstantResIndex = ~0u;
+    };
+    // Commits inline constants from the ResourceCache using push constants or
+    // by mapping and updating the inline constant buffer.
+    void CommitInlineConstants(const CommitInlineConstantsAttribs& Attribs) const;
 
 #ifdef DILIGENT_DEVELOPMENT
     /// Verifies committed resource using the SPIRV resource attributes from the PSO.
