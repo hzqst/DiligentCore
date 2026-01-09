@@ -9,6 +9,11 @@
 - No push-constant path for OpenGL.
 - No API surface changes.
 
+## Misc rules
+- Always run `BuildTools\FormatValidation\validate_format_win.bat` / 
+`BuildTools\FormatValidation\validate_format_linux.sh` after finish each step, to verify the code base after finishing each step. Making sure the formatting validation succeed. If any formatting issue found, we should follow `clang-format`'s advice to fix the formatting issue.
+- Copyright date need to be updated if we applied changes to source/header files.
+
 ## Desired Data Flow (D3D11 parity)
 1) `SetInlineConstants()` writes into SRB (or signature) cache staging.
 2) Draw/dispatch commit checks inline-constant mask.
@@ -259,7 +264,7 @@ The current code has bugs that will cause incorrect behavior for inline constant
 8. **Fixed type conversion warning** (`PipelineResourceSignatureGLImpl.cpp:226`):
    - Added explicit cast: `m_TotalInlineConstants += static_cast<Uint16>(ResDesc.ArraySize)` to fix C4244 warning
 
-**Bug Fix Note (merged from Step 8.5): `SetInlineConstants` must NOT call `UpdateRevision()`**
+**Bug Fix Note (part of Step 3): `SetInlineConstants` must NOT call `UpdateRevision()`**
 
 **Files**
 - `Graphics/GraphicsEngineOpenGL/include/ShaderResourceCacheGL.hpp`
@@ -548,7 +553,7 @@ This mirrors the D3D11 approach which uses `ProcessInlineCBs` to filter inline c
    - This enables the inline constants test suite for OpenGL backend in addition to D3D and Vulkan
    - All existing tests (ResourceLayout, ComputeResourceLayout, ResourceSignature, TwoResourceSignatures, RenderStateCache) will now run for OpenGL
 
-### 8.6) Bug Fix: Re-bind inline constant buffers after update when using compatible SRB
+### 8.5) Bug Fix: Re-bind inline constant buffers after update when using compatible SRB
 
 **Files**
 - `Graphics/GraphicsEngineOpenGL/include/PipelineResourceSignatureGLImpl.hpp`
@@ -620,4 +625,4 @@ In OpenGL, each signature creates its own shared inline constant buffers. When a
 9. **Step 6**: Add commit path in `DeviceContextGLImpl` (graphics + compute)
 10. **Step 7**: Implement static inline constants copy
 11. **Step 8**: Enable tests
-12. **Step 8.6**: Bug fix - Re-bind inline constant buffers after update when using compatible SRB
+12. **Step 8.5**: Bug fix - Re-bind inline constant buffers after update when using compatible SRB
