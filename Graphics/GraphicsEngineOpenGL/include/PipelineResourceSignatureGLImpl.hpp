@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,6 +31,7 @@
 /// Declaration of Diligent::PipelineResourceSignatureGLImpl class
 
 #include <array>
+#include <memory>
 
 #include "EngineGLImplTraits.hpp"
 #include "PipelineResourceAttribsGL.hpp"
@@ -61,6 +62,19 @@ const char*   GetBindingRangeName(BINDING_RANGE Range);
 struct ImmutableSamplerAttribsGL
 {
     Uint32 Dummy = 0;
+};
+
+/// Attributes of an inline constant buffer in OpenGL.
+/// OpenGL does not support push constants, so inline constants are emulated
+/// using a shared dynamic UBO that is updated before each draw/dispatch.
+struct InlineConstantBufferAttribsGL
+{
+    Uint32 CacheOffset   = 0; // UBO cache slot offset for this resource
+    Uint32 NumConstants  = 0; // Number of 32-bit constants (from ResDesc.ArraySize)
+
+    // Shared dynamic UBO created in the Signature.
+    // All SRBs reference this same buffer to reduce memory usage.
+    RefCntAutoPtr<BufferGLImpl> pBuffer;
 };
 
 struct PipelineResourceSignatureInternalDataGL : PipelineResourceSignatureInternalData<PipelineResourceAttribsGL, ImmutableSamplerAttribsGL>
@@ -127,6 +141,20 @@ public:
     // Make the base class method visible
     using TPipelineResourceSignatureBase::CopyStaticResources;
 
+    bool HasInlineConstants() const
+    {
+        return m_NumInlineConstantBuffers != 0;
+    }
+
+    Uint32 GetNumInlineConstantBuffers() const { return m_NumInlineConstantBuffers; }
+    Uint16 GetTotalInlineConstants() const { return m_TotalInlineConstants; }
+
+    const InlineConstantBufferAttribsGL& GetInlineConstantBuffer(Uint32 Index) const
+    {
+        VERIFY_EXPR(Index < m_NumInlineConstantBuffers);
+        return m_InlineConstantBuffers[Index];
+    }
+
     Uint32 GetImmutableSamplerIdx(const ResourceAttribs& Res) const
     {
         Uint32 ImtblSamIdx = InvalidImmutableSamplerIndex;
@@ -153,6 +181,15 @@ private:
     Uint64 m_DynamicUBOMask = 0;
     // Indicates which SSBO slots allow binding buffers with dynamic offsets
     Uint64 m_DynamicSSBOMask = 0;
+
+    // Number of inline constant buffers
+    Uint32 m_NumInlineConstantBuffers = 0;
+
+    // The total number of inline constants (32-bit values) in all inline constant buffers
+    Uint16 m_TotalInlineConstants = 0;
+
+    // Inline constant buffer attributes
+    std::unique_ptr<InlineConstantBufferAttribsGL[]> m_InlineConstantBuffers;
 };
 
 } // namespace Diligent

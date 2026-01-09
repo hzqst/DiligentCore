@@ -53,18 +53,9 @@ Step 0 is already complete. No additional validation code needs to be added in G
 The GL signature implementation inherits from `TPipelineResourceSignatureBase`, whose constructor calls `ValidatePipelineResourceSignatureDesc` which performs all necessary inline constants validation.
 
 ### 1) Define inline-constant metadata for GL signatures
+
 **Files**
 - `Graphics/GraphicsEngineOpenGL/include/PipelineResourceSignatureGLImpl.hpp`
-
-**Changes**
-- Add `InlineConstantBufferAttribsGL`:
-  - `Uint32 CacheOffset` (UBO cache slot for this resource)
-  - `Uint32 NumConstants` (ResDesc.ArraySize)
-  - `RefCntAutoPtr<BufferGLImpl> pBuffer` (shared dynamic UBO)
-- Add members:
-  - `std::vector<InlineConstantBufferAttribsGL> m_InlineConstantBuffers`
-  - `Uint16 m_TotalInlineConstants`
-- Add `HasInlineConstants()` to PRS (useful for commit path).
 
 **Reference (D3D11)**
 - `Graphics/GraphicsEngineD3D11/include/PipelineResourceSignatureD3D11Impl.hpp:63` (`InlineConstantBufferAttribsD3D11`)
@@ -73,6 +64,23 @@ The GL signature implementation inherits from `TPipelineResourceSignatureBase`, 
 **Reference (Vulkan)**
 - `Graphics/GraphicsEngineVulkan/include/PipelineResourceSignatureVkImpl.hpp:69` (`InlineConstantBufferAttribsVk`)
 - `Graphics/GraphicsEngineVulkan/include/PipelineResourceSignatureVkImpl.hpp:242` (`m_InlineConstantBuffers`)
+
+**Status: COMPLETED**
+
+**Changes Made**
+- Added `InlineConstantBufferAttribsGL` structure with:
+  - `Uint32 CacheOffset` - UBO cache slot offset for this resource
+  - `Uint32 NumConstants` - Number of 32-bit constants (from ResDesc.ArraySize)
+  - `RefCntAutoPtr<BufferGLImpl> pBuffer` - Shared dynamic UBO
+- Added class members:
+  - `Uint32 m_NumInlineConstantBuffers` - Number of inline constant buffers
+  - `Uint16 m_TotalInlineConstants` - Total number of 32-bit constants
+  - `std::unique_ptr<InlineConstantBufferAttribsGL[]> m_InlineConstantBuffers` - Inline constant buffer attributes array
+- Added public methods:
+  - `bool HasInlineConstants() const` - Returns true if signature has inline constants
+  - `Uint32 GetNumInlineConstantBuffers() const` - Returns number of inline constant buffers
+  - `Uint16 GetTotalInlineConstants() const` - Returns total inline constants count
+  - `const InlineConstantBufferAttribsGL& GetInlineConstantBuffer(Uint32 Index) const` - Accessor for inline constant buffer attributes
 
 ### 2) Fix binding counts for inline constants in GL layout
 **Files**
