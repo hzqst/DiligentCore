@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -754,12 +754,18 @@ void ShaderResourcesGL::LoadUniforms(const LoadUniformsAttribs& Attribs)
 
         if (IsNewBlock)
         {
+            // Get the buffer size for this uniform block
+            GLint BufferSize = 0;
+            glGetActiveUniformBlockiv(GLProgram, UniformBlockIndex, GL_UNIFORM_BLOCK_DATA_SIZE, &BufferSize);
+            DEV_CHECK_GL_ERROR("Failed to get the value of the GL_UNIFORM_BLOCK_DATA_SIZE parameter");
+
             UniformBlocks.emplace_back(
                 NamesPool.emplace(Name.data()).first->c_str(),
                 Attribs.ShaderStages,
                 SHADER_RESOURCE_TYPE_CONSTANT_BUFFER,
                 static_cast<Uint32>(ArraySize),
-                UniformBlockIndex //
+                UniformBlockIndex,
+                static_cast<Uint32>(BufferSize) //
             );
         }
     }

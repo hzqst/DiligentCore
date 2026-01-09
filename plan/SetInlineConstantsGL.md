@@ -82,6 +82,66 @@ The GL signature implementation inherits from `TPipelineResourceSignatureBase`, 
   - `Uint16 GetTotalInlineConstants() const` - Returns total inline constants count
   - `const InlineConstantBufferAttribsGL& GetInlineConstantBuffer(Uint32 Index) const` - Accessor for inline constant buffer attributes
 
+### 1.5) Fix ArraySize in GetDefaultSignatureDesc for inline constants
+
+**Files**
+- `Graphics/GraphicsEngineOpenGL/include/ShaderResourcesGL.hpp`
+- `Graphics/GraphicsEngineOpenGL/src/ShaderResourcesGL.cpp`
+- `Graphics/GraphicsEngineOpenGL/src/PipelineStateGLImpl.cpp`
+
+**Problem**
+When using `CreateGraphicsPipelineState` without an explicit `PipelineResourceSignatureDesc`, the engine creates a default signature via `GetDefaultSignatureDesc()`. For inline constants, the `PipelineResourceDesc::ArraySize` must contain the **number of 32-bit constants** (e.g., 24 for 6 float4s), not the UBO array size (which is always 1).
+
+The original code used `Attribs.ArraySize` directly for all uniform buffers, which is correct for regular UBOs but wrong for inline constants. This caused validation failures like:
+```
+Inline constant range (0 .. 23) is out of bounds for variable 'cbInlinePositions' of size 1 constants.
+```
+
+**Root Cause**
+- `UniformBufferInfo::ArraySize` is always 1 for non-arrayed UBOs
+- For inline constants, we need `BufferSize / sizeof(Uint32)` to get the constant count
+- D3D11 handles this via `GetInlineConstantCountOrThrow()` which uses HLSL reflection data
+
+**Changes**
+1. **Add `BufferSize` to `UniformBufferInfo`** (`ShaderResourcesGL.hpp`):
+   - Add `Uint32 BufferSize` member to store the uniform block data size
+   - Add `Uint32 GetInlineConstantCount() const` method that returns `BufferSize / sizeof(Uint32)`
+
+2. **Populate `BufferSize` during shader loading** (`ShaderResourcesGL.cpp`):
+   - In `LoadUniforms()`, call `glGetActiveUniformBlockiv(GLProgram, UniformBlockIndex, GL_UNIFORM_BLOCK_DATA_SIZE, &BufferSize)`
+   - Pass the buffer size to the `UniformBufferInfo` constructor
+
+3. **Use constant count for inline constants** (`PipelineStateGLImpl.cpp`):
+   - Create specialized `HandleUniformBuffer` handler in `GetDefaultSignatureDesc()`
+   - When `PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS` is set:
+     - Use `UB.GetInlineConstantCount()` instead of `UB.ArraySize`
+     - Validate that the count is non-zero and does not exceed `MAX_INLINE_CONSTANTS`
+
+**Reference (D3D11)**
+- `Graphics/GraphicsEngineD3D11/src/PipelineStateD3D11Impl.cpp:212` (`HandleCB` with `GetInlineConstantCountOrThrow()`)
+- `Graphics/GraphicsEngineD3D11/include/ShaderD3DBase.hpp:89` (`D3DShaderResourceAttribs::GetInlineConstantCountOrThrow()`)
+
+**Status: COMPLETED**
+
+**Changes Made**
+1. **Added `BufferSize` field to `UniformBufferInfo`** (`ShaderResourcesGL.hpp:76`):
+   - Added `const Uint32 BufferSize` member
+   - Updated both constructors to accept and initialize `BufferSize`
+   - Added `GetInlineConstantCount()` method
+
+2. **Populated `BufferSize` during loading** (`ShaderResourcesGL.cpp:230-232`):
+   - Added `glGetActiveUniformBlockiv` call with `GL_UNIFORM_BLOCK_DATA_SIZE`
+   - Passed buffer size to `UniformBufferInfo` constructor
+
+3. **Created specialized handler** (`PipelineStateGLImpl.cpp:337-374`):
+   - Added `HandleUniformBuffer` lambda that checks for `PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS`
+   - For inline constants: uses `GetInlineConstantCount()` for `ArraySize`
+   - Updated `ProcessConstResources` calls to use the specialized handler for UBs
+
+4. **Updated copyright years** in all modified files
+
+---
+
 ### 2) Fix binding counts for inline constants in GL layout
 **Files**
 - `Graphics/GraphicsEngineOpenGL/src/PipelineResourceSignatureGLImpl.cpp`
@@ -425,6 +485,9 @@ The current code has bugs that will cause incorrect behavior for inline constant
 - `Graphics/GraphicsEngineOpenGL/src/ShaderResourceCacheGL.cpp`
 - `Graphics/GraphicsEngineOpenGL/src/ShaderVariableManagerGL.cpp`
 - `Graphics/GraphicsEngineOpenGL/src/DeviceContextGLImpl.cpp`
+- `Graphics/GraphicsEngineOpenGL/include/ShaderResourcesGL.hpp` (Step 1.5: add BufferSize for inline constants)
+- `Graphics/GraphicsEngineOpenGL/src/ShaderResourcesGL.cpp` (Step 1.5: populate BufferSize via GL_UNIFORM_BLOCK_DATA_SIZE)
+- `Graphics/GraphicsEngineOpenGL/src/PipelineStateGLImpl.cpp` (Step 1.5: GetDefaultSignatureDesc inline constants handling)
 
 ## Acceptance Criteria
 - `SetInlineConstants()` works for GL and mirrors D3D11 behavior.
@@ -436,7 +499,8 @@ The current code has bugs that will cause incorrect behavior for inline constant
 
 ## Recommended Implementation Order
 
-2. **Step 1**: Define `InlineConstantBufferAttribsGL` structure
+1. **Step 1**: Define `InlineConstantBufferAttribsGL` structure
+2. **Step 1.5**: Fix ArraySize in `GetDefaultSignatureDesc` for inline constants (add `BufferSize` to `UniformBufferInfo`)
 3. **Step 2**: Fix binding count calculation in `CreateLayout` (use `GetArraySize()`) and create shared buffer
 4. **Step 3**: Extend `ShaderResourceCacheGL` for inline constant staging
 5. **Step 4**: Initialize SRB cache and bind shared buffer
