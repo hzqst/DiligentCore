@@ -548,46 +548,6 @@ This mirrors the D3D11 approach which uses `ProcessInlineCBs` to filter inline c
    - This enables the inline constants test suite for OpenGL backend in addition to D3D and Vulkan
    - All existing tests (ResourceLayout, ComputeResourceLayout, ResourceSignature, TwoResourceSignatures, RenderStateCache) will now run for OpenGL
 
-### 8.5) Bug Fix: SetInlineConstants must NOT call UpdateRevision
-
-**Files**
-- `Graphics/GraphicsEngineOpenGL/include/ShaderResourceCacheGL.hpp`
-
-**Problem**
-After enabling tests, the `InlineConstants.ResourceLayout` test failed with:
-```
-Revision of the shader resource cache at index 0 does not match the revision recorded when the SRB was committed.
-This indicates that resources have been changed since that time, but the SRB has not been committed with CommitShaderResources().
-This usage is invalid.
-```
-
-**Root Cause**
-The `ShaderResourceCacheGL::SetInlineConstants()` method was calling `UpdateRevision()` after writing inline constant data. This caused `DvpVerifyCacheRevisions()` to fail when inline constants were modified after `CommitShaderResources()` but before `Draw()`.
-
-However, inline constants are **designed** to be modified after SRB commit - that's the entire purpose of the `InlineConstantsIntact` flag and `InlineConstantsSRBMask` mechanism. Both D3D11 and Vulkan implementations of `SetInlineConstants()` do NOT call `UpdateRevision()`.
-
-**Test Flow That Exposed the Bug**:
-1. `CommitShaderResources(pSRB)` - records current cache revision
-2. `pColVarPS->SetInlineConstants(...)` - updates inline constants (incorrectly called `UpdateRevision()`)
-3. `Draw()` → `PrepareForDraw()` → `GetCommitMask()` → `DvpVerifyCacheRevisions()` - detects revision mismatch and fails
-
-**Fix**
-Removed `UpdateRevision()` call from `ShaderResourceCacheGL::SetInlineConstants()` and added explanatory comment.
-
-**Reference (D3D11)**
-- `Graphics/GraphicsEngineD3D11/include/ShaderResourceCacheD3D11.hpp:776` - no `UpdateRevision()` call
-
-**Reference (Vulkan)**
-- `Graphics/GraphicsEngineVulkan/src/ShaderResourceCacheVk.cpp:988` - no `UpdateRevision()` call
-
-**Status: COMPLETED**
-
-**CRITICAL for future backend implementations:**
-When implementing inline constants for a new backend, the `SetInlineConstants()` method in the shader resource cache **MUST NOT** call `UpdateRevision()`. Inline constants are special resources that are allowed to change between SRB commits. The update mechanism is handled by:
-- `InlineConstantsSRBMask` - tracks which SRBs have inline constants
-- `InlineConstantsIntact` flag - indicates if inline constants have changed since last draw
-- `UpdateInlineConstantBuffers()` - uploads staging data to GPU buffers during commit
-
 ### 8.6) Bug Fix: Re-bind inline constant buffers after update when using compatible SRB
 
 **Files**
