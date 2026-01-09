@@ -223,7 +223,7 @@ void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
                 // Besides, inline constants are expected to change frequently, so skipping updates is unlikely.
                 InlineCBAttribs.pBuffer = CreateInlineConstantBuffer(ResDesc.Name, ResDesc.ArraySize);
 
-                m_TotalInlineConstants += ResDesc.ArraySize;
+                m_TotalInlineConstants += static_cast<Uint16>(ResDesc.ArraySize);
             }
 
             VERIFY(CacheOffset + ArraySize <= std::numeric_limits<TBindings::value_type>::max(), "Cache offset exceeds representable range");
