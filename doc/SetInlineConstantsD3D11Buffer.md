@@ -82,22 +82,14 @@ if (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
     InlineConstantBufferAttribsD3D11& InlineCBAttribs{m_InlineConstantBuffers[InlineConstantBufferIdx++]};
     InlineCBAttribs.BindPoints   = BindPoints;        // 保存分配的绑定点
     InlineCBAttribs.NumConstants = ResDesc.ArraySize; // ArraySize存储的是常量数量
-    
-    // 创建动态常量缓冲区
-    std::string Name = m_Desc.Name + " - " + ResDesc.Name;
-    BufferDesc CBDesc{
-        Name.c_str(),
-        ResDesc.ArraySize * sizeof(Uint32),  // 缓冲区大小 = 常量数 × 4字节
-        BIND_UNIFORM_BUFFER,
-        USAGE_DYNAMIC,                        // 动态用法，支持Map
-        CPU_ACCESS_WRITE                      // CPU写访问
-    };
-    
-    RefCntAutoPtr<IBuffer> pBuffer;
-    m_pDevice->CreateBuffer(CBDesc, nullptr, &pBuffer);
-    InlineCBAttribs.pBuffer = pBuffer.RawPtr<BufferD3D11Impl>();
+
+    // All SRBs created from this signature will share the same inline constant buffer.
+    InlineCBAttribs.pBuffer = CreateInlineConstantBuffer(ResDesc.Name, ResDesc.ArraySize);
 }
 ```
+
+> 注：`CreateInlineConstantBuffer()` 是通用的辅助函数（`Graphics/GraphicsEngine/include/PipelineResourceSignatureBase.hpp`），
+> 内部创建 `USAGE_DYNAMIC + CPU_ACCESS_WRITE` 的 `BIND_UNIFORM_BUFFER`，大小为 `NumConstants * sizeof(Uint32)`，名称为 `"SignatureName - ResName"`。
 
 ### 2.3 Buffer共享设计
 
@@ -112,7 +104,7 @@ PipelineResourceSignature
 
 这种设计的权衡：
 - **优点**：减少内存消耗
-- **缺点**：每帧都需要更新Buffer（因为所有SRB共享）
+- **缺点**：由于Buffer在Signature内共享，绑定/提交不同SRB时需要把该SRB的CPU暂存数据写入同一个D3D11 Buffer；频繁切换SRB可能导致更新更频繁
 
 另一种可能的设计是每个SRB有独立Buffer，可以在常量未变化时跳过更新，但会增加内存占用。
 
@@ -344,6 +336,8 @@ void ShaderResourceCacheD3D11::InitInlineConstantBuffer(
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+补充：`UpdateInlineConstantBuffers()` 由 `DeviceContextD3D11Impl::BindShaderResources(...)` 触发；当 SRB 处于 stale 状态，或未指定 `DRAW_FLAG_INLINE_CONSTANTS_INTACT` 时会更新（`Map(D3D11_MAP_WRITE_DISCARD)` + `memcpy` + `Unmap`）。
+
 ### 5.2 SetInlineConstants实现
 
 ```cpp
@@ -449,7 +443,7 @@ inline void ShaderResourceCacheD3D11::CopyInlineConstants(
 
 ### 7.2 优化建议
 
-1. **使用`DRAW_FLAG_DYNAMIC_RESOURCE_BUFFERS_INTACT`**
+1. **使用`DRAW_FLAG_INLINE_CONSTANTS_INTACT`**
    - 如果Inline Constants未改变，可以跳过`UpdateInlineConstantBuffers`调用
 
 2. **批量更新**
