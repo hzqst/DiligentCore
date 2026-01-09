@@ -593,9 +593,31 @@ This ensures that even when an SRB from a compatible but different signature is 
 **CRITICAL for future backend implementations:**
 In OpenGL, each signature creates its own shared inline constant buffers. When an SRB from a compatible but different signature is used, the SRB's cache contains buffer pointers to the original signature's buffers. After updating inline constants, the current signature's buffers must be explicitly bound to override the previously bound buffers.
 
+### 8.6) Fix: buffer block with binding 0 has mismatching definitions (RenderStateCache test)
+
+**Files**
+- `Graphics/Archiver/src/Archiver_GL.cpp`
+
+**Problem**
+In RenderStateCache test, pipeline state program linking failed with an error similar to:
+```
+Failed to link program 0 for pipeline state 'Render State Cache Test': error: buffer block with binding `0' has mismatching definitions
+```
+
+**Root Cause**
+When `separate_shader_objects` is disabled (monolithic program linking path), SPIRV-Cross may emit explicit `layout(binding=...)` qualifiers for buffer blocks. Different shader stages can end up assigning the same binding index (e.g. `0`) to different blocks with different definitions/layouts, which some drivers reject at link time.
+
+**Fix**
+When `separate_shader_objects` is disabled, force GLSL codegen to avoid emitting binding qualifiers and let the GL driver handle binding allocation:
+- Set `Options.version = 410`
+- Set `Options.enable_420pack_extension = false`
+
+**Status: COMPLETED**
+
 ---
 
 ## Files to Touch (expected)
+- `Graphics/Archiver/src/Archiver_GL.cpp`
 - `Graphics/GraphicsEngineOpenGL/include/PipelineResourceSignatureGLImpl.hpp`
 - `Graphics/GraphicsEngineOpenGL/src/PipelineResourceSignatureGLImpl.cpp`
 - `Graphics/GraphicsEngineOpenGL/include/ShaderResourceCacheGL.hpp`
@@ -626,3 +648,4 @@ In OpenGL, each signature creates its own shared inline constant buffers. When a
 10. **Step 7**: Implement static inline constants copy
 11. **Step 8**: Enable tests
 12. **Step 8.5**: Bug fix - Re-bind inline constant buffers after update when using compatible SRB
+13. **Step 8.6**: Fix - buffer block with binding 0 has mismatching definitions (RenderStateCache test)
