@@ -129,6 +129,38 @@ The current code has bugs that will cause incorrect behavior for inline constant
 - `Graphics/GraphicsEngineVulkan/src/PipelineResourceSignatureVkImpl.cpp:184` (`ResDesc.GetArraySize()` for descriptor count)
 - `Graphics/GraphicsEngineVulkan/src/PipelineResourceSignatureVkImpl.cpp:301` (`ResArraySize` for bindings)
 
+**Status: COMPLETED**
+
+**Changes Made**
+1. **Added first pass to count inline constant buffers** (`PipelineResourceSignatureGLImpl.cpp:109-123`):
+   - Added loop to count resources with `PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS`
+   - Allocate `m_InlineConstantBuffers` array if count > 0
+   - Initialize `InlineConstantBufferIdx` counter for second pass
+
+2. **Fixed `GetArraySize()` usage for binding counts** (`PipelineResourceSignatureGLImpl.cpp:193`):
+   - Changed from `ResDesc.ArraySize` to `ResDesc.GetArraySize()` for `ArraySize` variable
+   - This correctly treats inline constants as single UBO slot instead of using constant count as array size
+
+3. **Fixed dynamic UBO mask to exclude inline constants** (`PipelineResourceSignatureGLImpl.cpp:195-198`):
+   - Changed condition from `PIPELINE_RESOURCE_FLAG_NO_DYNAMIC_BUFFERS` check only
+   - To `(PIPELINE_RESOURCE_FLAG_NO_DYNAMIC_BUFFERS | PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS) == 0`
+   - Inline constant buffers are internally managed and don't participate in dynamic buffer offset logic
+   - Updated loop to use `ArraySize` (which is `GetArraySize()`) instead of `ResDesc.ArraySize`
+
+4. **Created shared buffer for inline constants** (`PipelineResourceSignatureGLImpl.cpp:208-227`):
+   - Added inline constant buffer handling block when `PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS` flag is set
+   - Store `CacheOffset` and `NumConstants` in `InlineConstantBufferAttribsGL`
+   - Create shared dynamic UBO via `CreateInlineConstantBuffer()` (inherited from base class)
+   - Increment `m_TotalInlineConstants` counter with proper type cast to avoid C4244 warning
+   - All SRBs share the same buffer to reduce memory usage
+
+5. **Added validation assertion** (`PipelineResourceSignatureGLImpl.cpp:241`):
+   - Added `VERIFY_EXPR(InlineConstantBufferIdx == m_NumInlineConstantBuffers)` after loop
+   - Ensures all inline constant buffers were properly initialized
+
+6. **Updated copyright year** (`PipelineResourceSignatureGLImpl.cpp:1`):
+   - Updated from 2019-2025 to 2019-2026
+
 ### 3) Extend ShaderResourceCacheGL for inline-constant staging
 **Files**
 - `Graphics/GraphicsEngineOpenGL/include/ShaderResourceCacheGL.hpp`
@@ -168,6 +200,39 @@ The current code has bugs that will cause incorrect behavior for inline constant
 - `Graphics/GraphicsEngineVulkan/include/ShaderResourceCacheVk.hpp:280` (`ShaderResourceCacheVk::SetInlineConstants`)
 - `Graphics/GraphicsEngineVulkan/src/ShaderResourceCacheVk.cpp:52` (inline-constant storage sizing)
 - `Graphics/GraphicsEngineVulkan/src/ShaderResourceCacheVk.cpp:988` (`ShaderResourceCacheVk::SetInlineConstants`)
+
+**Status: COMPLETED**
+
+**Changes Made**
+1. **Updated memory layout documentation** (`ShaderResourceCacheGL.hpp:41-46`):
+   - Updated the memory layout comment to include `Inline Constant Data | Uint32[] (tail)` section
+   
+2. **Extended `CachedUB` structure** (`ShaderResourceCacheGL.hpp:79-103`):
+   - Added `void* pInlineConstantData = nullptr` member for CPU-side staging buffer pointer
+   - Added `SetInlineConstants()` method with validation and memcpy logic
+
+3. **Added `m_HasInlineConstants` flag** (`ShaderResourceCacheGL.hpp:233`):
+   - Added `bool m_HasInlineConstants = false` member variable
+   - Updated `HasInlineConstants()` method to return `m_HasInlineConstants` instead of hardcoded `false`
+
+4. **Updated function signatures** (`ShaderResourceCacheGL.hpp`):
+   - `GetRequiredMemorySize()`: Added `Uint32 TotalInlineConstants = 0` parameter
+   - `Initialize()`: Added `Uint32 TotalInlineConstants = 0` parameter
+
+5. **Updated `GetRequiredMemorySize()` implementation** (`ShaderResourceCacheGL.cpp:42-57`):
+   - Added inline constant data tail allocation: `MemSize += TotalInlineConstants * sizeof(Uint32)`
+
+6. **Updated `Initialize()` implementation** (`ShaderResourceCacheGL.cpp:59-82`):
+   - Set `m_HasInlineConstants = (TotalInlineConstants > 0)`
+   - Updated buffer size calculation to include inline constant data: `BufferSize = m_MemoryEndOffset + TotalInlineConstants * sizeof(Uint32)`
+
+7. **Added helper methods** (`ShaderResourceCacheGL.hpp`):
+   - `InitInlineConstantBuffer()`: Binds shared UBO and sets staging pointer
+   - `SetInlineConstants()`: Writes inline constant data to staging buffer and updates revision
+   - `CopyInlineConstants()`: Copies inline constant data between caches
+
+8. **Fixed type conversion warning** (`PipelineResourceSignatureGLImpl.cpp:226`):
+   - Added explicit cast: `m_TotalInlineConstants += static_cast<Uint16>(ResDesc.ArraySize)` to fix C4244 warning
 
 ### 4) Initialize SRB cache with inline constant buffers
 **Files**
