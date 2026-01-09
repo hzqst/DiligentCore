@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,7 +35,7 @@
 namespace Diligent
 {
 
-size_t ShaderResourceCacheGL::GetRequiredMemorySize(const TResourceCount& ResCount)
+size_t ShaderResourceCacheGL::GetRequiredMemorySize(const TResourceCount& ResCount, Uint32 TotalInlineConstants)
 {
     static_assert(std::is_same<TResourceCount, PipelineResourceSignatureGLImpl::TBindings>::value,
                   "ShaderResourceCacheGL::TResourceCount must be the same type as PipelineResourceSignatureGLImpl::TBindings");
@@ -46,14 +46,19 @@ size_t ShaderResourceCacheGL::GetRequiredMemorySize(const TResourceCount& ResCou
                 sizeof(CachedResourceView) * ResCount[BINDING_RANGE_IMAGE]          +
                 sizeof(CachedSSBO)         * ResCount[BINDING_RANGE_STORAGE_BUFFER];
     // clang-format on
+
+    // Add space for inline constant data at the tail
+    MemSize += TotalInlineConstants * sizeof(Uint32);
+
     VERIFY(MemSize < InvalidResourceOffset, "Memory size exceed the maximum allowed size.");
     return MemSize;
 }
 
-void ShaderResourceCacheGL::Initialize(const TResourceCount& ResCount, IMemoryAllocator& MemAllocator, Uint64 DynamicUBOSlotMask, Uint64 DynamicSSBOSlotMask)
+void ShaderResourceCacheGL::Initialize(const TResourceCount& ResCount, IMemoryAllocator& MemAllocator, Uint64 DynamicUBOSlotMask, Uint64 DynamicSSBOSlotMask, Uint32 TotalInlineConstants)
 {
     m_DynamicUBOSlotMask  = DynamicUBOSlotMask;
     m_DynamicSSBOSlotMask = DynamicSSBOSlotMask;
+    m_HasInlineConstants  = (TotalInlineConstants > 0);
 
     VERIFY(!m_pResourceData, "Cache has already been initialized");
 
@@ -69,9 +74,10 @@ void ShaderResourceCacheGL::Initialize(const TResourceCount& ResCount, IMemoryAl
     VERIFY_EXPR(GetSSBOCount()    == static_cast<Uint32>(ResCount[BINDING_RANGE_STORAGE_BUFFER]));
     // clang-format on
 
-    size_t BufferSize = m_MemoryEndOffset;
+    // Inline constant data tail is after m_MemoryEndOffset
+    size_t BufferSize = m_MemoryEndOffset + TotalInlineConstants * sizeof(Uint32);
 
-    VERIFY_EXPR(BufferSize == GetRequiredMemorySize(ResCount));
+    VERIFY_EXPR(BufferSize == GetRequiredMemorySize(ResCount, TotalInlineConstants));
 
     if (BufferSize > 0)
     {
