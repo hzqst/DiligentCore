@@ -409,6 +409,15 @@ The current code has bugs that will cause incorrect behavior for inline constant
 - `Tests/DiligentCoreAPITest/src/InlineConstantsTest.cpp:281` (`TEST_F(InlineConstants, ResourceLayout)`)
 - `Tests/DiligentCoreAPITest/src/InlineConstantsTest.cpp:400` (`TEST_F(InlineConstants, ComputeResourceLayout)`)
 
+**Status: COMPLETED**
+
+**Changes Made**
+1. **Updated backend skip guard** (`InlineConstantsTest.cpp:216`):
+   - Changed from: `if (!pDevice->GetDeviceInfo().IsD3DDevice() && !pDevice->GetDeviceInfo().IsVulkanDevice())`
+   - To: `if (!pDevice->GetDeviceInfo().IsD3DDevice() && !pDevice->GetDeviceInfo().IsVulkanDevice() && !pDevice->GetDeviceInfo().IsGLDevice())`
+   - This enables the inline constants test suite for OpenGL backend in addition to D3D and Vulkan
+   - All existing tests (ResourceLayout, ComputeResourceLayout, ResourceSignature, TwoResourceSignatures, RenderStateCache) will now run for OpenGL
+
 ## Files to Touch (expected)
 - `Graphics/GraphicsEngineOpenGL/include/PipelineResourceSignatureGLImpl.hpp`
 - `Graphics/GraphicsEngineOpenGL/src/PipelineResourceSignatureGLImpl.cpp`
