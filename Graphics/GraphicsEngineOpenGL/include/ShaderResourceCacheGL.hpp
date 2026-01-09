@@ -399,7 +399,10 @@ public:
         VERIFY(CacheOffset < GetUBCount(), "Cache offset is out of range");
         CachedUB& UB = GetUB(CacheOffset);
         UB.SetInlineConstants(pConstants, FirstConstant, NumConstants);
-        UpdateRevision();
+        // NOTE: Do NOT call UpdateRevision() here.
+        // Inline constants are allowed to change after SRB commit without re-committing.
+        // The InlineConstantsSRBMask and InlineConstantsIntact flag handle the update logic.
+        // This is consistent with D3D11 and Vulkan implementations.
     }
 
     void CopyInlineConstants(const ShaderResourceCacheGL& SrcCache,
