@@ -294,6 +294,18 @@ The current code has bugs that will cause incorrect behavior for inline constant
 - `Graphics/GraphicsEngineVulkan/src/ShaderVariableManagerVk.cpp:654` (`ShaderVariableManagerVk::SetInlineConstants`)
 - `Graphics/GraphicsEngineVulkan/src/ShaderVariableManagerVk.cpp:673` (calls `ResourceCache.SetInlineConstants`)
 
+**Status: COMPLETED**
+
+**Changes Made**
+1. **Implemented `UniformBuffBindInfo::SetConstants()`** (`ShaderVariableManagerGL.cpp:226-237`):
+   - Added validation `VERIFY_EXPR(Desc.ResourceType == SHADER_RESOURCE_TYPE_CONSTANT_BUFFER)`
+   - Added DEV build validation via `VerifyInlineConstants(Desc, pConstants, FirstConstant, NumConstants)`
+   - Calls `m_ParentManager.m_ResourceCache.SetInlineConstants(Attr.CacheOffset, pConstants, FirstConstant, NumConstants)`
+   - Mirrors D3D11 implementation pattern exactly
+
+2. **Updated copyright year** (`ShaderVariableManagerGL.cpp:2`):
+   - Changed from 2019-2025 to 2019-2026
+
 ### 6) Commit path: update UBOs before binding
 **Files**
 - `Graphics/GraphicsEngineOpenGL/src/DeviceContextGLImpl.cpp`
