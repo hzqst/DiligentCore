@@ -605,8 +605,12 @@ void PipelineResourceSignatureGLImpl::CopyStaticResources(ShaderResourceCacheGL&
 #endif
 }
 
-void PipelineResourceSignatureGLImpl::UpdateInlineConstantBuffers(const ShaderResourceCacheGL& ResourceCache, GLContextState& CtxState) const
+void PipelineResourceSignatureGLImpl::UpdateInlineConstantBuffers(const ShaderResourceCacheGL& ResourceCache,
+                                                                   GLContextState&              CtxState,
+                                                                   const TBindings&             BaseBindings) const
 {
+    const Uint16 BaseUBOBinding = BaseBindings[BINDING_RANGE_UNIFORM_BUFFER];
+
     for (Uint32 i = 0; i < m_NumInlineConstantBuffers; ++i)
     {
         const InlineConstantBufferAttribsGL& InlineCBAttr = GetInlineConstantBuffer(i);
@@ -616,11 +620,24 @@ void PipelineResourceSignatureGLImpl::UpdateInlineConstantBuffers(const ShaderRe
         VERIFY(InlineCBAttr.NumConstants * sizeof(Uint32) == InlineCB.RangeSize, "Inline constant buffer size mismatch");
         VERIFY(InlineCB.pInlineConstantData != nullptr, "Inline constant data pointer is null");
 
+        const Uint32 BufferSize = InlineCBAttr.NumConstants * sizeof(Uint32);
+
         // Map the shared buffer and copy the data
         PVoid pMappedData = nullptr;
         InlineCBAttr.pBuffer->Map(CtxState, MAP_WRITE, MAP_FLAG_DISCARD, pMappedData);
-        memcpy(pMappedData, InlineCB.pInlineConstantData, InlineCBAttr.NumConstants * sizeof(Uint32));
+        memcpy(pMappedData, InlineCB.pInlineConstantData, BufferSize);
         InlineCBAttr.pBuffer->Unmap(CtxState);
+
+        // Re-bind the signature's shared inline constant buffer to the GL slot.
+        // This is necessary because when an SRB created from a compatible but different
+        // signature is used, the SRB's cache contains buffer pointers to the original
+        // signature's shared buffers. BindResources() binds those buffers, but we need
+        // to bind *this* signature's shared buffers which now contain the updated data.
+        InlineCBAttr.pBuffer->BufferMemoryBarrier(MEMORY_BARRIER_UNIFORM_BUFFER, CtxState);
+        CtxState.BindUniformBuffer(BaseUBOBinding + InlineCBAttr.CacheOffset,
+                                   InlineCBAttr.pBuffer->GetGLHandle(),
+                                   0, // BaseOffset
+                                   BufferSize);
     }
 }
 

@@ -756,7 +756,7 @@ void DeviceContextGLImpl::BindProgramResources(Uint32 BindSRBMask, bool DynamicB
             {
                 if (PipelineResourceSignatureGLImpl* pSign = m_pPipelineState->GetResourceSignature(sign))
                 {
-                    pSign->UpdateInlineConstantBuffers(*pResourceCache, GetContextState());
+                    pSign->UpdateInlineConstantBuffers(*pResourceCache, GetContextState(), BaseBindings);
                 }
                 else
                 {

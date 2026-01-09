@@ -253,7 +253,7 @@ The current code has bugs that will cause incorrect behavior for inline constant
 
 7. **Added helper methods** (`ShaderResourceCacheGL.hpp`):
    - `InitInlineConstantBuffer()`: Binds shared UBO and sets staging pointer
-   - `SetInlineConstants()`: Writes inline constant data to staging buffer and updates revision
+   - `SetInlineConstants()`: Writes inline constant data to staging buffer (**without** updating revision - see Step 8.5)
    - `CopyInlineConstants()`: Copies inline constant data between caches
 
 8. **Fixed type conversion warning** (`PipelineResourceSignatureGLImpl.cpp:226`):
@@ -510,6 +510,46 @@ This mirrors the D3D11 approach which uses `ProcessInlineCBs` to filter inline c
    - This enables the inline constants test suite for OpenGL backend in addition to D3D and Vulkan
    - All existing tests (ResourceLayout, ComputeResourceLayout, ResourceSignature, TwoResourceSignatures, RenderStateCache) will now run for OpenGL
 
+### 8.5) Bug Fix: SetInlineConstants must NOT call UpdateRevision
+
+**Files**
+- `Graphics/GraphicsEngineOpenGL/include/ShaderResourceCacheGL.hpp`
+
+**Problem**
+After enabling tests, the `InlineConstants.ResourceLayout` test failed with:
+```
+Revision of the shader resource cache at index 0 does not match the revision recorded when the SRB was committed.
+This indicates that resources have been changed since that time, but the SRB has not been committed with CommitShaderResources().
+This usage is invalid.
+```
+
+**Root Cause**
+The `ShaderResourceCacheGL::SetInlineConstants()` method was calling `UpdateRevision()` after writing inline constant data. This caused `DvpVerifyCacheRevisions()` to fail when inline constants were modified after `CommitShaderResources()` but before `Draw()`.
+
+However, inline constants are **designed** to be modified after SRB commit - that's the entire purpose of the `InlineConstantsIntact` flag and `InlineConstantsSRBMask` mechanism. Both D3D11 and Vulkan implementations of `SetInlineConstants()` do NOT call `UpdateRevision()`.
+
+**Test Flow That Exposed the Bug**:
+1. `CommitShaderResources(pSRB)` - records current cache revision
+2. `pColVarPS->SetInlineConstants(...)` - updates inline constants (incorrectly called `UpdateRevision()`)
+3. `Draw()` → `PrepareForDraw()` → `GetCommitMask()` → `DvpVerifyCacheRevisions()` - detects revision mismatch and fails
+
+**Fix**
+Removed `UpdateRevision()` call from `ShaderResourceCacheGL::SetInlineConstants()` and added explanatory comment.
+
+**Reference (D3D11)**
+- `Graphics/GraphicsEngineD3D11/include/ShaderResourceCacheD3D11.hpp:776` - no `UpdateRevision()` call
+
+**Reference (Vulkan)**
+- `Graphics/GraphicsEngineVulkan/src/ShaderResourceCacheVk.cpp:988` - no `UpdateRevision()` call
+
+**Status: COMPLETED**
+
+**CRITICAL for future backend implementations:**
+When implementing inline constants for a new backend, the `SetInlineConstants()` method in the shader resource cache **MUST NOT** call `UpdateRevision()`. Inline constants are special resources that are allowed to change between SRB commits. The update mechanism is handled by:
+- `InlineConstantsSRBMask` - tracks which SRBs have inline constants
+- `InlineConstantsIntact` flag - indicates if inline constants have changed since last draw
+- `UpdateInlineConstantBuffers()` - uploads staging data to GPU buffers during commit
+
 ## Files to Touch (expected)
 - `Graphics/GraphicsEngineOpenGL/include/PipelineResourceSignatureGLImpl.hpp`
 - `Graphics/GraphicsEngineOpenGL/src/PipelineResourceSignatureGLImpl.cpp`
@@ -537,7 +577,50 @@ This mirrors the D3D11 approach which uses `ProcessInlineCBs` to filter inline c
 4. **Step 3**: Extend `ShaderResourceCacheGL` for inline constant staging
 5. **Step 3.5**: Fix SRB memory size estimate to include `m_TotalInlineConstants` in constructor lambdas
 6. **Step 4**: Initialize SRB cache and bind shared buffer
-7. **Step 5**: Implement `ShaderVariableManagerGL::SetConstants`
-8. **Step 6**: Add commit path in `DeviceContextGLImpl` (graphics + compute)
-9. **Step 7**: Implement static inline constants copy
-10. **Step 8**: Enable tests
+7. **Step 4.5**: Bug fix - only initialize static inline constants in static cache
+8. **Step 5**: Implement `ShaderVariableManagerGL::SetConstants`
+9. **Step 6**: Add commit path in `DeviceContextGLImpl` (graphics + compute)
+10. **Step 7**: Implement static inline constants copy
+11. **Step 8**: Enable tests
+12. **Step 8.5**: Bug fix - `SetInlineConstants` must NOT call `UpdateRevision()`
+13. **Step 8.6**: Bug fix - Re-bind inline constant buffers after update when using compatible SRB
+
+### 8.6) Bug Fix: Re-bind inline constant buffers after update when using compatible SRB
+
+**Files**
+- `Graphics/GraphicsEngineOpenGL/include/PipelineResourceSignatureGLImpl.hpp`
+- `Graphics/GraphicsEngineOpenGL/src/PipelineResourceSignatureGLImpl.cpp`
+- `Graphics/GraphicsEngineOpenGL/src/DeviceContextGLImpl.cpp`
+
+**Problem**
+In `TEST_F(InlineConstants, RenderStateCache)`, the second call to `VerifyPSOFromCache(pPSO, pRefSRB)` draws nothing because inline constants are all zeros. RenderDoc inspection shows that the GL binding slots have different UBO objects bound compared to the first draw.
+
+**Root Cause**
+When an SRB created from one signature (`pRefPSO`) is used with a different but compatible signature (`pPSO`):
+1. `BindResources()` binds UBOs from the SRB's cache, which stores pointers to `pRefPSO`'s signature's shared inline constant buffers
+2. `UpdateInlineConstantBuffers()` uploads staging data to `pPSO`'s signature's shared inline constant buffers
+3. The GL binding slots have `pRefPSO`'s buffers bound, but the data was uploaded to `pPSO`'s buffers
+4. Shaders read from the bound buffers (`pRefPSO`'s), which contain zeros/stale data
+
+**Fix**
+Modified `UpdateInlineConstantBuffers()` to:
+1. Accept a `const TBindings& BaseBindings` parameter to know the GL binding points
+2. After uploading data to each inline constant buffer, re-bind the signature's shared buffer to the correct GL slot
+
+This ensures that even when an SRB from a compatible but different signature is used, the current signature's shared buffers (which now contain the updated data) are properly bound.
+
+**Changes Made**
+1. **Updated function signature** (`PipelineResourceSignatureGLImpl.hpp:149-151`):
+   - Added `const TBindings& BaseBindings` parameter
+
+2. **Updated implementation** (`PipelineResourceSignatureGLImpl.cpp:608-642`):
+   - After `Unmap()`, call `BufferMemoryBarrier()` and `BindUniformBuffer()` to re-bind the buffer
+   - Binding point is calculated as `BaseBindings[BINDING_RANGE_UNIFORM_BUFFER] + CacheOffset`
+
+3. **Updated call site** (`DeviceContextGLImpl.cpp:759`):
+   - Pass `BaseBindings` to `UpdateInlineConstantBuffers()`
+
+**Status: COMPLETED**
+
+**CRITICAL for future backend implementations:**
+In OpenGL, each signature creates its own shared inline constant buffers. When an SRB from a compatible but different signature is used, the SRB's cache contains buffer pointers to the original signature's buffers. After updating inline constants, the current signature's buffers must be explicitly bound to override the previously bound buffers.

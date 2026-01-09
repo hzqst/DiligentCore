@@ -143,7 +143,12 @@ public:
 
     // Updates inline constant buffers by mapping the shared dynamic UBOs and copying
     // data from the CPU-side staging buffer in the resource cache.
-    void UpdateInlineConstantBuffers(const ShaderResourceCacheGL& ResourceCache, class GLContextState& CtxState) const;
+    // Also re-binds the inline constant buffers to the correct GL slots to ensure
+    // the signature's shared buffers are used even when an SRB from a compatible
+    // but different signature is used.
+    void UpdateInlineConstantBuffers(const ShaderResourceCacheGL& ResourceCache,
+                                     class GLContextState&        CtxState,
+                                     const TBindings&             BaseBindings) const;
 
     bool HasInlineConstants() const
     {
