@@ -437,6 +437,7 @@ private:
         }
 
         Options.separate_shader_objects = GLShaderCI.DeviceInfo.Features.SeparablePrograms;
+
         // On some targets (WebGPU), uninitialized variables are banned.
         Options.force_zero_initialized_variables = true;
         // For opcodes where we have to perform explicit additional nan checks, very ugly code is generated.
@@ -449,6 +450,14 @@ private:
         // Apple does not support GL_ARB_shading_language_420pack extension
         Options.enable_420pack_extension = false;
 #    endif
+
+        if (!Options.separate_shader_objects)
+        {
+            // We do not emit binding qualifiers when separate_shader_objects disable.
+            // Let OpenGL driver do the binding qualifiers allocation.
+            Options.version                  = 410;
+            Options.enable_420pack_extension = false;
+        }
 
         CompilerGLSL Compiler{std::move(SPIRV)};
         Compiler.set_common_options(Options);
