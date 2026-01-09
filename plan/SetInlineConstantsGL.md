@@ -195,14 +195,15 @@
 - `Graphics/GraphicsEngineVulkan/src/PipelineStateVkImpl.cpp:702` (flag exclusivity)
 
 ## Testing Plan
-- Add or reuse a small GL test that:
-  - defines inline constants in PRS (static + mutable/dynamic)
-  - calls `SetInlineConstants()` with partial updates
-  - verifies data reaches shader (draw & dispatch)
-  - uses `DRAW_FLAG_INLINE_CONSTANTS_INTACT` to skip updates on repeated draws
-- Validate SRB stale vs intact behavior:
-  - change constants between draws -> update happens
-  - no change + intact flag -> no map/unmap
+- Reuse the existing multi-backend test in `Tests/DiligentCoreAPITest/src/InlineConstantsTest.cpp` (graphics + compute coverage is already present).
+- Enable OpenGL by removing/relaxing the backend guard in `InlineConstants::SetUpTestSuite()` so GL is not skipped once the impl is ready.
+- No new test code is required; run the existing suite to validate inline constant updates and SRB behavior.
+
+**Reference (Tests)**
+- `Tests/DiligentCoreAPITest/src/InlineConstantsTest.cpp:211` (`InlineConstants::SetUpTestSuite`)
+- `Tests/DiligentCoreAPITest/src/InlineConstantsTest.cpp:216` (backend skip guard)
+- `Tests/DiligentCoreAPITest/src/InlineConstantsTest.cpp:281` (`TEST_F(InlineConstants, ResourceLayout)`)
+- `Tests/DiligentCoreAPITest/src/InlineConstantsTest.cpp:400` (`TEST_F(InlineConstants, ComputeResourceLayout)`)
 
 ## Files to Touch (expected)
 - `Graphics/GraphicsEngineOpenGL/include/PipelineResourceSignatureGLImpl.hpp`
