@@ -388,6 +388,16 @@ The current code has bugs that will cause incorrect behavior for inline constant
 **Reference (Vulkan)**
 - `Graphics/GraphicsEngineVulkan/src/PipelineResourceSignatureVkImpl.cpp:685` (copy inline-constant staging data)
 
+**Status: COMPLETED**
+
+**Changes Made**
+1. **Added inline constants handling in `CopyStaticResources()`** (`PipelineResourceSignatureGLImpl.cpp:474-499`):
+   - In the `BINDING_RANGE_UNIFORM_BUFFER` case, added check for `PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS` flag
+   - For inline constants: call `DstResourceCache.CopyInlineConstants(SrcResourceCache, ResAttr.CacheOffset, ResDesc.ArraySize)`
+   - Added verification that `INLINE_CONSTANTS` flag is exclusive (cannot be combined with other flags)
+   - For regular uniform buffers: kept existing loop-based copy logic
+   - Mirrors D3D11 implementation pattern exactly
+
 ### 8) Enable tests
 - Reuse the existing multi-backend test in `Tests/DiligentCoreAPITest/src/InlineConstantsTest.cpp` (graphics + compute coverage is already present).
 - Enable OpenGL by removing/relaxing the backend guard in `InlineConstants::SetUpTestSuite()` so GL is not skipped once the impl is ready.

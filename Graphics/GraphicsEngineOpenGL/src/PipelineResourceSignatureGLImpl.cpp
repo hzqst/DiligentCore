@@ -473,19 +473,29 @@ void PipelineResourceSignatureGLImpl::CopyStaticResources(ShaderResourceCacheGL&
         switch (PipelineResourceToBindingRange(ResDesc))
         {
             case BINDING_RANGE_UNIFORM_BUFFER:
-                for (Uint32 ArrInd = 0; ArrInd < ResDesc.ArraySize; ++ArrInd)
+                if (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
                 {
-                    const ShaderResourceCacheGL::CachedUB& SrcCachedRes = SrcResourceCache.GetConstUB(ResAttr.CacheOffset + ArrInd);
-                    if (!SrcCachedRes.pBuffer)
+                    VERIFY(ResDesc.Flags == PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS, "INLINE_CONSTANTS flag is not compatible with other flags");
+                    // For inline constants, ResDesc.ArraySize is the number of 32-bit constants, not the array size.
+                    // Copy the staging data from signature cache to SRB cache.
+                    DstResourceCache.CopyInlineConstants(SrcResourceCache, ResAttr.CacheOffset, ResDesc.ArraySize);
+                }
+                else
+                {
+                    for (Uint32 ArrInd = 0; ArrInd < ResDesc.ArraySize; ++ArrInd)
                     {
-                        if (DstCacheType == ResourceCacheContentType::SRB)
-                            LOG_ERROR_MESSAGE("No resource is assigned to static shader variable '", GetShaderResourcePrintName(ResDesc, ArrInd), "' in pipeline resource signature '", m_Desc.Name, "'.");
-                        continue;
-                    }
+                        const ShaderResourceCacheGL::CachedUB& SrcCachedRes = SrcResourceCache.GetConstUB(ResAttr.CacheOffset + ArrInd);
+                        if (!SrcCachedRes.pBuffer)
+                        {
+                            if (DstCacheType == ResourceCacheContentType::SRB)
+                                LOG_ERROR_MESSAGE("No resource is assigned to static shader variable '", GetShaderResourcePrintName(ResDesc, ArrInd), "' in pipeline resource signature '", m_Desc.Name, "'.");
+                            continue;
+                        }
 
-                    DstResourceCache.SetUniformBuffer(ResAttr.CacheOffset + ArrInd,
-                                                      RefCntAutoPtr<BufferGLImpl>{SrcCachedRes.pBuffer},
-                                                      SrcCachedRes.BaseOffset, SrcCachedRes.RangeSize);
+                        DstResourceCache.SetUniformBuffer(ResAttr.CacheOffset + ArrInd,
+                                                          RefCntAutoPtr<BufferGLImpl>{SrcCachedRes.pBuffer},
+                                                          SrcCachedRes.BaseOffset, SrcCachedRes.RangeSize);
+                    }
                 }
                 break;
             case BINDING_RANGE_STORAGE_BUFFER:
