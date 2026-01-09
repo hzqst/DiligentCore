@@ -609,6 +609,8 @@ When implementing inline constants for a new backend, the `SetInlineConstants()`
 - `Graphics/GraphicsEngineOpenGL/include/ShaderResourcesGL.hpp` (Step 1.5: add BufferSize for inline constants)
 - `Graphics/GraphicsEngineOpenGL/src/ShaderResourcesGL.cpp` (Step 1.5: populate BufferSize via GL_UNIFORM_BLOCK_DATA_SIZE)
 - `Graphics/GraphicsEngineOpenGL/src/PipelineStateGLImpl.cpp` (Step 1.5: GetDefaultSignatureDesc inline constants handling)
+- `Graphics/HLSL2GLSLConverterLib/include/HLSL2GLSLConverterImpl.hpp` (Step 8.4: add binding qualifiers to cbuffers)
+- `Graphics/HLSL2GLSLConverterLib/src/HLSL2GLSLConverterImpl.cpp` (Step 8.4: add binding qualifiers to cbuffers)
 
 ## Acceptance Criteria
 - `SetInlineConstants()` works for GL and mirrors D3D11 behavior.
@@ -672,6 +674,6 @@ In OpenGL, each signature creates its own shared inline constant buffers. When a
 9. **Step 6**: Add commit path in `DeviceContextGLImpl` (graphics + compute)
 10. **Step 7**: Implement static inline constants copy
 11. **Step 8**: Enable tests
-12. **Step 8.4**: Bug fix - HLSL2GLSLConverter not not assigning explicit layout(binding=N) qualifiers to uniform blocks (cbuffers).
-12. **Step 8.5**: Bug fix - `SetInlineConstants` must NOT call `UpdateRevision()`
-13. **Step 8.6**: Bug fix - Re-bind inline constant buffers after update when using compatible SRB
+12. **Step 8.4**: Bug fix - HLSL2GLSLConverter not assigning explicit layout(binding=N) qualifiers to uniform blocks (cbuffers)
+13. **Step 8.5**: Bug fix - `SetInlineConstants` must NOT call `UpdateRevision()`
+14. **Step 8.6**: Bug fix - Re-bind inline constant buffers after update when using compatible SRB
