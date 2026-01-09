@@ -243,7 +243,19 @@ void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
 
     if (m_pStaticResCache)
     {
-        m_pStaticResCache->Initialize(StaticResCounter, GetRawAllocator(), 0x0, 0x0, m_TotalInlineConstants);
+        // Calculate the total number of static inline constants.
+        // Only inline constant buffers with CacheOffset < StaticResCounter are static.
+        Uint16 StaticInlineConstants = 0;
+        for (Uint32 i = 0; i < m_NumInlineConstantBuffers; ++i)
+        {
+            const InlineConstantBufferAttribsGL& InlineCBAttr = GetInlineConstantBuffer(i);
+            if (InlineCBAttr.CacheOffset < StaticResCounter[BINDING_RANGE_UNIFORM_BUFFER])
+            {
+                StaticInlineConstants += static_cast<Uint16>(InlineCBAttr.NumConstants);
+            }
+        }
+
+        m_pStaticResCache->Initialize(StaticResCounter, GetRawAllocator(), 0x0, 0x0, StaticInlineConstants);
 
         // Initialize inline constant buffers in the static cache.
         // This allows static inline constants to be set on the signature and later copied to SRBs.
@@ -256,17 +268,22 @@ void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
                 VERIFY_EXPR(InlineCBAttr.pBuffer);
                 VERIFY_EXPR(InlineCBAttr.NumConstants > 0);
 
-                void* pInlineConstantData = m_pStaticResCache->GetInlineConstantDataPtr(InlineConstantOffset);
+                // Only initialize inline constant buffers that are within the static cache range.
+                // Mutable and dynamic inline constant buffers are not stored in the static cache.
+                if (InlineCBAttr.CacheOffset < StaticResCounter[BINDING_RANGE_UNIFORM_BUFFER])
+                {
+                    void* pInlineConstantData = m_pStaticResCache->GetInlineConstantDataPtr(InlineConstantOffset);
 
-                m_pStaticResCache->InitInlineConstantBuffer(
-                    InlineCBAttr.CacheOffset,
-                    RefCntAutoPtr<BufferGLImpl>{InlineCBAttr.pBuffer},
-                    InlineCBAttr.NumConstants,
-                    pInlineConstantData);
+                    m_pStaticResCache->InitInlineConstantBuffer(
+                        InlineCBAttr.CacheOffset,
+                        RefCntAutoPtr<BufferGLImpl>{InlineCBAttr.pBuffer},
+                        InlineCBAttr.NumConstants,
+                        pInlineConstantData);
 
-                InlineConstantOffset += InlineCBAttr.NumConstants;
+                    InlineConstantOffset += InlineCBAttr.NumConstants;
+                }
             }
-            VERIFY_EXPR(InlineConstantOffset == m_TotalInlineConstants);
+            VERIFY_EXPR(InlineConstantOffset == StaticInlineConstants);
         }
     }
 }

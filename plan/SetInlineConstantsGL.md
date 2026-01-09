@@ -346,6 +346,27 @@ When adding inline constants support to a new backend, ensure the SRB memory siz
    - For each inline constant buffer, call `InitInlineConstantBuffer()` on static cache
    - This allows static inline constants to be set on the signature and later copied to SRBs
 
+### 4.5) Bug Fix: Only initialize static inline constants in static cache
+
+**Problem**
+When testing with mixed variable types (e.g., `Pos static, Col mutable`), the test failed with:
+```
+Debug assertion failed in GetConstUB(), file ShaderResourceCacheGL.hpp, line 310:
+Uniform buffer index (1) is out of range
+```
+
+**Root Cause**
+The static cache was being initialized with ALL inline constant buffers (`m_TotalInlineConstants`), including mutable and dynamic ones. However, the static cache only has space for static resources (`StaticResCounter`). When the code tried to call `InitInlineConstantBuffer` for a mutable inline constant buffer, it accessed a CacheOffset that was out of range for the static cache.
+
+**Fix** (`PipelineResourceSignatureGLImpl.cpp:244-288`)
+1. Calculate `StaticInlineConstants` by only counting inline constant buffers where `CacheOffset < StaticResCounter[BINDING_RANGE_UNIFORM_BUFFER]`
+2. Pass `StaticInlineConstants` instead of `m_TotalInlineConstants` to `m_pStaticResCache->Initialize()`
+3. Only call `InitInlineConstantBuffer()` for inline constant buffers that are within the static cache range
+
+This mirrors the D3D11 approach which uses `ProcessInlineCBs` to filter inline constant buffers based on whether their binding is within the cache's resource count.
+
+**Status: COMPLETED**
+
 ### 5) Implement SetInlineConstants in ShaderVariableManagerGL
 **Files**
 - `Graphics/GraphicsEngineOpenGL/src/ShaderVariableManagerGL.cpp`
