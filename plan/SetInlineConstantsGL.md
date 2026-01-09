@@ -43,6 +43,15 @@ if (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
 - `Graphics/GraphicsEngineVulkan/src/PipelineResourceSignatureVkImpl.cpp:200` (inline constants only for CBs)
 - `Graphics/GraphicsEngineVulkan/src/PipelineStateVkImpl.cpp:702` (flag exclusivity)
 
+**Status: COMPLETED** - No changes required.
+Step 0 is already complete. No additional validation code needs to be added in GL's `CreateLayout`. The `DEV_CHECK_ERR` validations suggested in the original plan would be redundant because the base class constructor's `ValidatePipelineResourceSignatureDesc` (in `Graphics/GraphicsEngine/src/PipelineResourceSignatureBase.cpp`) executes all these checks before `CreateLayout` is called:
+
+1. **Only constant buffers can have INLINE_CONSTANTS flag** - Validated via `GetValidPipelineResourceFlags()` at line 106-111
+2. **INLINE_CONSTANTS flag cannot be combined with other flags** - Validated at lines 115-119
+3. **ArraySize cannot exceed MAX_INLINE_CONSTANTS** - Validated at lines 122-126
+
+The GL signature implementation inherits from `TPipelineResourceSignatureBase`, whose constructor calls `ValidatePipelineResourceSignatureDesc` which performs all necessary inline constants validation.
+
 ### 1) Define inline-constant metadata for GL signatures
 **Files**
 - `Graphics/GraphicsEngineOpenGL/include/PipelineResourceSignatureGLImpl.hpp`
