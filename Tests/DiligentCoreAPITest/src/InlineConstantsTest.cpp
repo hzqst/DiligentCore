@@ -33,6 +33,8 @@
 #include "GraphicsTypesX.hpp"
 #include "FastRand.hpp"
 
+#include <Windows.h>
+#include "renderdoc_app.h"
 
 
 namespace Diligent
@@ -205,6 +207,8 @@ constexpr Uint32 kNumPosConstants     = sizeof(g_Positions) / 4;
 constexpr Uint32 kNumColConstants     = sizeof(g_Colors) / 4;
 constexpr Uint32 kNumComputeConstants = sizeof(g_ComputeData) / 4;
 
+RENDERDOC_API_1_1_2* rdoc_api = NULL;
+
 class InlineConstants : public ::testing::Test
 {
 protected:
@@ -216,6 +220,15 @@ protected:
         if (!pDevice->GetDeviceInfo().IsD3DDevice() && !pDevice->GetDeviceInfo().IsVulkanDevice() && !pDevice->GetDeviceInfo().IsGLDevice())
         {
             GTEST_SKIP();
+        }
+
+        // At init, on windows
+        if (HMODULE mod = GetModuleHandleA("renderdoc.dll"))
+        {
+            pRENDERDOC_GetAPI RENDERDOC_GetAPI =
+                (pRENDERDOC_GetAPI)GetProcAddress(mod, "RENDERDOC_GetAPI");
+            int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_1_2, (void**)&rdoc_api);
+            assert(ret == 1);
         }
 
         ShaderCreateInfo ShaderCI;
@@ -280,6 +293,9 @@ FastRandFloat              InlineConstants::sm_Rnd{0, 0.f, 1.f};
 
 TEST_F(InlineConstants, ResourceLayout)
 {
+    if (rdoc_api)
+        rdoc_api->StartFrameCapture(NULL, NULL);
+
     GPUTestingEnvironment* pEnv       = GPUTestingEnvironment::GetInstance();
     IRenderDevice*         pDevice    = pEnv->GetDevice();
     IDeviceContext*        pContext   = pEnv->GetDeviceContext();
@@ -394,8 +410,9 @@ TEST_F(InlineConstants, ResourceLayout)
                       << " Col " << GetShaderVariableTypeLiteralName(ColType) << std::endl;
         }
     }
+    if (rdoc_api)
+        rdoc_api->EndFrameCapture(NULL, NULL);
 }
-
 
 TEST_F(InlineConstants, ComputeResourceLayout)
 {
@@ -890,6 +907,9 @@ void InlineConstants::VerifyPSOFromCache(IPipelineState*         pPSO,
 
 TEST_F(InlineConstants, RenderStateCache)
 {
+    if (rdoc_api)
+       rdoc_api->StartFrameCapture(NULL, NULL);
+
     GPUTestingEnvironment* pEnv    = GPUTestingEnvironment::GetInstance();
     IRenderDevice*         pDevice = pEnv->GetDevice();
 
@@ -970,6 +990,8 @@ TEST_F(InlineConstants, RenderStateCache)
         pData.Release();
         pCache->WriteToBlob(pass == 0 ? kCacheContentVersion : ~0u, &pData);
     }
+    if (rdoc_api)
+        rdoc_api->EndFrameCapture(NULL, NULL);
 }
 
 TEST_F(InlineConstants, VulkanPushConstants)
