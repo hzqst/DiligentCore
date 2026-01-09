@@ -510,6 +510,55 @@ This mirrors the D3D11 approach which uses `ProcessInlineCBs` to filter inline c
    - This enables the inline constants test suite for OpenGL backend in addition to D3D and Vulkan
    - All existing tests (ResourceLayout, ComputeResourceLayout, ResourceSignature, TwoResourceSignatures, RenderStateCache) will now run for OpenGL
 
+### 8.4) Bug Fix: HLSL2GLSLConverter not assigning explicit layout(binding=N) qualifiers to uniform blocks
+
+**Files**
+- `Graphics/HLSL2GLSLConverterLib/include/HLSL2GLSLConverterImpl.hpp`
+- `Graphics/HLSL2GLSLConverterLib/src/HLSL2GLSLConverterImpl.cpp`
+
+**Problem**
+The `InlineConstants.RenderStateCache` test failed on OpenGL with:
+```
+error: buffer block with binding `0' has mismatching definitions
+Failed to link program 0 for pipeline state 'Render State Cache Test'
+```
+
+**Root Cause**
+The HLSL2GLSL converter was not assigning explicit `layout(binding=N)` qualifiers to uniform blocks (cbuffers), while it was already doing this for SSBOs and images. This caused OpenGL linking failures when:
+- VS has `cbInlinePositions` (binding 0 by default) and `cbInlineColors` (binding 1 by default)
+- PS has only `cbInlineColors` (binding 0 by default, since it's the first UBO in PS)
+
+When linked together, binding 0 had conflicting definitions because:
+- VS: `uniform cbInlinePositions { ... };` gets binding 0
+- PS: `uniform cbInlineColors { ... };` also gets binding 0 (first UBO in shader)
+
+The linker sees two different UBO definitions at binding point 0.
+
+**Fix**
+Modified `ProcessConstantBuffer()` in the HLSL2GLSL converter to add explicit binding qualifiers:
+- Before: `cbuffer` → `uniform` or `layout(row_major) uniform`
+- After: `cbuffer` → `layout(binding=N) uniform` or `layout(row_major, binding=N) uniform`
+
+**Changes Made**
+1. **Updated function signature** (`HLSL2GLSLConverterImpl.hpp:293`):
+   - Changed `void ProcessConstantBuffer(TokenListType::iterator& Token);`
+   - To `void ProcessConstantBuffer(TokenListType::iterator& Token, Uint32& UniformBlockBinding);`
+
+2. **Updated implementation** (`HLSL2GLSLConverterImpl.cpp:915-928`):
+   - Added `std::stringstream` to generate `layout(binding=N)` or `layout(row_major, binding=N)` prefix
+   - Increment `UniformBlockBinding` counter after each cbuffer
+
+3. **Updated call site** (`HLSL2GLSLConverterImpl.cpp:4563-4575`):
+   - Added `Uint32 UniformBlockBinding = 0;` counter alongside existing `ShaderStorageBlockBinding` and `ImageBinding`
+   - Pass counter to `ProcessConstantBuffer(Token, UniformBlockBinding)`
+
+4. **Updated copyright years**: 2019-2025 → 2019-2026
+
+**Status: COMPLETED**
+
+**CRITICAL for HLSL-to-GLSL conversion:**
+When multiple shaders with different uniform block sets are linked into a non-separable GL program, each shader stage independently assigns default binding points to its UBOs. Without explicit `layout(binding=N)` qualifiers, the linker will fail if different stages have different UBOs at the same default binding point. The fix ensures each cbuffer gets a unique, explicit binding in the order they appear in the source.
+
 ### 8.5) Bug Fix: SetInlineConstants must NOT call UpdateRevision
 
 **Files**
