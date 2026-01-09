@@ -237,7 +237,7 @@ The current code has bugs that will cause incorrect behavior for inline constant
 ### 4) Initialize SRB cache with inline constant buffers
 **Files**
 - `Graphics/GraphicsEngineOpenGL/src/PipelineResourceSignatureGLImpl.cpp`
-- `Graphics/GraphicsEngineOpenGL/include/PipelineResourceSignatureGLImpl.hpp`
+- `Graphics/GraphicsEngineOpenGL/include/ShaderResourceCacheGL.hpp`
 
 **Changes**
 - `InitSRBResourceCache()`:
@@ -257,6 +257,25 @@ The current code has bugs that will cause incorrect behavior for inline constant
 - `Graphics/GraphicsEngineVulkan/src/PipelineResourceSignatureVkImpl.cpp:574` (`InitSRBResourceCache`)
 - `Graphics/GraphicsEngineVulkan/src/PipelineResourceSignatureVkImpl.cpp:583` (`InitializeSets` with inline constants)
 - `Graphics/GraphicsEngineVulkan/src/PipelineResourceSignatureVkImpl.cpp:628` (bind shared UBOs into cache)
+
+**Status: COMPLETED**
+
+**Changes Made**
+1. **Added `GetInlineConstantDataPtr()` method** (`ShaderResourceCacheGL.hpp:367-374`):
+   - Returns pointer to inline constant data at given offset (in number of 32-bit constants)
+   - Data is stored at tail of resource cache memory, after `m_MemoryEndOffset`
+
+2. **Updated `InitSRBResourceCache()`** (`PipelineResourceSignatureGLImpl.cpp:555-605`):
+   - Pass `m_TotalInlineConstants` to `ResourceCache.Initialize()`
+   - For each `InlineConstantBufferAttribsGL`:
+     - Calculate pointer to inline constant data in the cache memory tail
+     - Call `ResourceCache.InitInlineConstantBuffer()` to bind shared UBO and set staging pointer
+   - Added verification that total inline constants match expected count
+
+3. **Updated static cache initialization in `CreateLayout()`** (`PipelineResourceSignatureGLImpl.cpp:242-269`):
+   - Pass `m_TotalInlineConstants` to `m_pStaticResCache->Initialize()`
+   - For each inline constant buffer, call `InitInlineConstantBuffer()` on static cache
+   - This allows static inline constants to be set on the signature and later copied to SRBs
 
 ### 5) Implement SetInlineConstants in ShaderVariableManagerGL
 **Files**

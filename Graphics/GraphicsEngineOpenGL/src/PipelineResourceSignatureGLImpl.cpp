@@ -241,7 +241,31 @@ void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
 
     if (m_pStaticResCache)
     {
-        m_pStaticResCache->Initialize(StaticResCounter, GetRawAllocator(), 0x0, 0x0);
+        m_pStaticResCache->Initialize(StaticResCounter, GetRawAllocator(), 0x0, 0x0, m_TotalInlineConstants);
+
+        // Initialize inline constant buffers in the static cache.
+        // This allows static inline constants to be set on the signature and later copied to SRBs.
+        if (m_NumInlineConstantBuffers > 0)
+        {
+            Uint32 InlineConstantOffset = 0;
+            for (Uint32 i = 0; i < m_NumInlineConstantBuffers; ++i)
+            {
+                const InlineConstantBufferAttribsGL& InlineCBAttr = GetInlineConstantBuffer(i);
+                VERIFY_EXPR(InlineCBAttr.pBuffer);
+                VERIFY_EXPR(InlineCBAttr.NumConstants > 0);
+
+                void* pInlineConstantData = m_pStaticResCache->GetInlineConstantDataPtr(InlineConstantOffset);
+
+                m_pStaticResCache->InitInlineConstantBuffer(
+                    InlineCBAttr.CacheOffset,
+                    RefCntAutoPtr<BufferGLImpl>{InlineCBAttr.pBuffer},
+                    InlineCBAttr.NumConstants,
+                    pInlineConstantData);
+
+                InlineConstantOffset += InlineCBAttr.NumConstants;
+            }
+            VERIFY_EXPR(InlineConstantOffset == m_TotalInlineConstants);
+        }
     }
 }
 
@@ -554,7 +578,34 @@ void PipelineResourceSignatureGLImpl::CopyStaticResources(ShaderResourceCacheGL&
 
 void PipelineResourceSignatureGLImpl::InitSRBResourceCache(ShaderResourceCacheGL& ResourceCache)
 {
-    ResourceCache.Initialize(m_BindingCount, m_SRBMemAllocator.GetResourceCacheDataAllocator(0), m_DynamicUBOMask, m_DynamicSSBOMask);
+    ResourceCache.Initialize(m_BindingCount, m_SRBMemAllocator.GetResourceCacheDataAllocator(0), m_DynamicUBOMask, m_DynamicSSBOMask, m_TotalInlineConstants);
+
+    // Initialize inline constant buffers.
+    // Each inline constant buffer shares a single dynamic UBO created in CreateLayout().
+    // The staging data is stored contiguously at the tail of the resource cache memory.
+    if (m_NumInlineConstantBuffers > 0)
+    {
+        // Inline constant data starts at m_MemoryEndOffset in the cache
+        Uint32 InlineConstantOffset = 0;
+        for (Uint32 i = 0; i < m_NumInlineConstantBuffers; ++i)
+        {
+            const InlineConstantBufferAttribsGL& InlineCBAttr = GetInlineConstantBuffer(i);
+            VERIFY_EXPR(InlineCBAttr.pBuffer);
+            VERIFY_EXPR(InlineCBAttr.NumConstants > 0);
+
+            // Calculate pointer to inline constant data in the cache memory tail
+            void* pInlineConstantData = ResourceCache.GetInlineConstantDataPtr(InlineConstantOffset);
+
+            ResourceCache.InitInlineConstantBuffer(
+                InlineCBAttr.CacheOffset,
+                RefCntAutoPtr<BufferGLImpl>{InlineCBAttr.pBuffer},
+                InlineCBAttr.NumConstants,
+                pInlineConstantData);
+
+            InlineConstantOffset += InlineCBAttr.NumConstants;
+        }
+        VERIFY_EXPR(InlineConstantOffset == m_TotalInlineConstants);
+    }
 
     // Initialize immutable samplers
     for (Uint32 r = 0; r < m_Desc.NumResources; ++r)

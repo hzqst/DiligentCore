@@ -364,6 +364,15 @@ public:
         return m_HasInlineConstants;
     }
 
+    // Returns a pointer to the inline constant data at the given offset (in number of 32-bit constants).
+    // The inline constant data is stored at the tail of the resource cache memory, after m_MemoryEndOffset.
+    void* GetInlineConstantDataPtr(Uint32 ConstantOffset) const
+    {
+        VERIFY_EXPR(m_HasInlineConstants);
+        VERIFY_EXPR(m_pResourceData);
+        return reinterpret_cast<Uint32*>(m_pResourceData.get() + m_MemoryEndOffset) + ConstantOffset;
+    }
+
     void InitInlineConstantBuffer(Uint32                        CacheOffset,
                                   RefCntAutoPtr<BufferGLImpl>&& pBuffer,
                                   Uint32                        NumConstants,
