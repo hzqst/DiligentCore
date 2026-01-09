@@ -69,8 +69,8 @@ struct ImmutableSamplerAttribsGL
 /// using a shared dynamic UBO that is updated before each draw/dispatch.
 struct InlineConstantBufferAttribsGL
 {
-    Uint32 CacheOffset   = 0; // UBO cache slot offset for this resource
-    Uint32 NumConstants  = 0; // Number of 32-bit constants (from ResDesc.ArraySize)
+    Uint32 CacheOffset  = 0; // UBO cache slot offset for this resource
+    Uint32 NumConstants = 0; // Number of 32-bit constants (from ResDesc.ArraySize)
 
     // Shared dynamic UBO created in the Signature.
     // All SRBs reference this same buffer to reduce memory usage.
