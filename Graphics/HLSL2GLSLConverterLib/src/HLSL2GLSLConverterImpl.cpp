@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -912,14 +912,20 @@ HLSL2GLSLConverterImpl::TokenListType::iterator HLSL2GLSLConverterImpl::Conversi
 //    ...
 // }; <- Semicolon must be here
 //
-void HLSL2GLSLConverterImpl::ConversionStream::ProcessConstantBuffer(TokenListType::iterator& Token)
+void HLSL2GLSLConverterImpl::ConversionStream::ProcessConstantBuffer(TokenListType::iterator& Token, Uint32& UniformBlockBinding)
 {
     VERIFY_EXPR(Token->Type == TokenType::kw_cbuffer);
 
-    // Replace "cbuffer" with "uniform"
-    Token->Literal = m_bUseRowMajorMatrices ?
-        "layout(row_major) uniform" :
-        "uniform";
+    // Replace "cbuffer" with "layout(binding=N) uniform" or "layout(row_major, binding=N) uniform"
+    {
+        std::stringstream ss;
+        if (m_bUseRowMajorMatrices)
+            ss << "layout(row_major, binding=" << UniformBlockBinding << ") uniform";
+        else
+            ss << "layout(binding=" << UniformBlockBinding << ") uniform";
+        Token->Literal = ss.str();
+        ++UniformBlockBinding;
+    }
     ++Token;
     // cbuffer CBufferName
     //         ^
@@ -4554,6 +4560,7 @@ StringAlloc HLSL2GLSLConverterImpl::ConversionStream::Convert(const Char* EntryP
 
     Uint32 ShaderStorageBlockBinding = 0;
     Uint32 ImageBinding              = 0;
+    Uint32 UniformBlockBinding       = 0;
 
     std::unordered_map<String, bool> SamplersHash;
 
@@ -4565,7 +4572,7 @@ StringAlloc HLSL2GLSLConverterImpl::ConversionStream::Convert(const Char* EntryP
         switch (Token->Type)
         {
             case TokenType::kw_cbuffer:
-                ProcessConstantBuffer(Token);
+                ProcessConstantBuffer(Token, UniformBlockBinding);
                 break;
 
             case TokenType::kw_RWStructuredBuffer:
