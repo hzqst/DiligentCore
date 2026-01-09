@@ -606,8 +606,8 @@ void PipelineResourceSignatureGLImpl::CopyStaticResources(ShaderResourceCacheGL&
 }
 
 void PipelineResourceSignatureGLImpl::UpdateInlineConstantBuffers(const ShaderResourceCacheGL& ResourceCache,
-                                                                   GLContextState&              CtxState,
-                                                                   const TBindings&             BaseBindings) const
+                                                                  GLContextState&              CtxState,
+                                                                  const TBindings&             BaseBindings) const
 {
     const Uint16 BaseUBOBinding = BaseBindings[BINDING_RANGE_UNIFORM_BUFFER];
 
