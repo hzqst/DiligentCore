@@ -550,24 +550,6 @@ When implementing inline constants for a new backend, the `SetInlineConstants()`
 - `InlineConstantsIntact` flag - indicates if inline constants have changed since last draw
 - `UpdateInlineConstantBuffers()` - uploads staging data to GPU buffers during commit
 
-## Files to Touch (expected)
-- `Graphics/GraphicsEngineOpenGL/include/PipelineResourceSignatureGLImpl.hpp`
-- `Graphics/GraphicsEngineOpenGL/src/PipelineResourceSignatureGLImpl.cpp`
-- `Graphics/GraphicsEngineOpenGL/include/ShaderResourceCacheGL.hpp`
-- `Graphics/GraphicsEngineOpenGL/src/ShaderResourceCacheGL.cpp`
-- `Graphics/GraphicsEngineOpenGL/src/ShaderVariableManagerGL.cpp`
-- `Graphics/GraphicsEngineOpenGL/src/DeviceContextGLImpl.cpp`
-- `Graphics/GraphicsEngineOpenGL/include/ShaderResourcesGL.hpp` (Step 1.5: add BufferSize for inline constants)
-- `Graphics/GraphicsEngineOpenGL/src/ShaderResourcesGL.cpp` (Step 1.5: populate BufferSize via GL_UNIFORM_BLOCK_DATA_SIZE)
-- `Graphics/GraphicsEngineOpenGL/src/PipelineStateGLImpl.cpp` (Step 1.5: GetDefaultSignatureDesc inline constants handling)
-
-## Acceptance Criteria
-- `SetInlineConstants()` works for GL and mirrors D3D11 behavior.
-- No binding count inflation from `ArraySize` when `INLINE_CONSTANTS` is set.
-- Inline constants update only when SRB is stale or `DRAW_FLAG_INLINE_CONSTANTS_INTACT` is not set.
-- Static inline constants propagate into SRB caches on creation.
-
-
 ### 8.6) Bug Fix: Re-bind inline constant buffers after update when using compatible SRB
 
 **Files**
@@ -609,6 +591,23 @@ This ensures that even when an SRB from a compatible but different signature is 
 In OpenGL, each signature creates its own shared inline constant buffers. When an SRB from a compatible but different signature is used, the SRB's cache contains buffer pointers to the original signature's buffers. After updating inline constants, the current signature's buffers must be explicitly bound to override the previously bound buffers.
 
 ---
+
+## Files to Touch (expected)
+- `Graphics/GraphicsEngineOpenGL/include/PipelineResourceSignatureGLImpl.hpp`
+- `Graphics/GraphicsEngineOpenGL/src/PipelineResourceSignatureGLImpl.cpp`
+- `Graphics/GraphicsEngineOpenGL/include/ShaderResourceCacheGL.hpp`
+- `Graphics/GraphicsEngineOpenGL/src/ShaderResourceCacheGL.cpp`
+- `Graphics/GraphicsEngineOpenGL/src/ShaderVariableManagerGL.cpp`
+- `Graphics/GraphicsEngineOpenGL/src/DeviceContextGLImpl.cpp`
+- `Graphics/GraphicsEngineOpenGL/include/ShaderResourcesGL.hpp` (Step 1.5: add BufferSize for inline constants)
+- `Graphics/GraphicsEngineOpenGL/src/ShaderResourcesGL.cpp` (Step 1.5: populate BufferSize via GL_UNIFORM_BLOCK_DATA_SIZE)
+- `Graphics/GraphicsEngineOpenGL/src/PipelineStateGLImpl.cpp` (Step 1.5: GetDefaultSignatureDesc inline constants handling)
+
+## Acceptance Criteria
+- `SetInlineConstants()` works for GL and mirrors D3D11 behavior.
+- No binding count inflation from `ArraySize` when `INLINE_CONSTANTS` is set.
+- Inline constants update only when SRB is stale or `DRAW_FLAG_INLINE_CONSTANTS_INTACT` is not set.
+- Static inline constants propagate into SRB caches on creation.
 
 ## Recommended Implementation Order
 
