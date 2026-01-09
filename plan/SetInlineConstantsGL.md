@@ -432,9 +432,6 @@ The current code has bugs that will cause incorrect behavior for inline constant
 - Inline constants update only when SRB is stale or `DRAW_FLAG_INLINE_CONSTANTS_INTACT` is not set.
 - Static inline constants propagate into SRB caches on creation.
 
-## Optional (Not MVP)
-- **Serialization/deserialization support**: If PSO cache/archive support is needed, `InlineConstantBufferAttribsGL` serialization and deserialization must also be handled. This can be deferred.
-
 ---
 
 ## Recommended Implementation Order
