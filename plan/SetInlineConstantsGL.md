@@ -367,6 +367,8 @@ This mirrors the D3D11 approach which uses `ProcessInlineCBs` to filter inline c
 
 **Status: COMPLETED**
 
+* This need to be carefully and properly handled with future backend implementations.
+
 ### 5) Implement SetInlineConstants in ShaderVariableManagerGL
 **Files**
 - `Graphics/GraphicsEngineOpenGL/src/ShaderVariableManagerGL.cpp`
