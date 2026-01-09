@@ -596,18 +596,25 @@ In OpenGL, each signature creates its own shared inline constant buffers. When a
 ### 8.6) Fix: buffer block with binding 0 has mismatching definitions (RenderStateCache test)
 
 **Files**
+
 - `Graphics/Archiver/src/Archiver_GL.cpp`
 
 **Problem**
+
 In RenderStateCache test, pipeline state program linking failed with an error similar to:
+
 ```
 Failed to link program 0 for pipeline state 'Render State Cache Test': error: buffer block with binding `0' has mismatching definitions
 ```
 
 **Root Cause**
-When `separate_shader_objects` is disabled (monolithic program linking path), SPIRV-Cross may emit explicit `layout(binding=...)` qualifiers for buffer blocks. Different shader stages can end up assigning the same binding index (e.g. `0`) to different blocks with different definitions/layouts, which some drivers reject at link time.
+
+When `separate_shader_objects` is disabled (monolithic program linking path), SPIRV-Cross may emit explicit `layout(binding=...)` qualifiers for buffer blocks.
+
+Different shader stages can end up assigning the same binding index (e.g. `0`) to different blocks with different definitions/layouts, which some drivers reject at link time.
 
 **Fix**
+
 When `separate_shader_objects` is disabled, force GLSL codegen to avoid emitting binding qualifiers and let the GL driver handle binding allocation:
 - Set `Options.version = 410`
 - Set `Options.enable_420pack_extension = false`
