@@ -17,6 +17,32 @@
 
 ## Implementation Steps
 
+### 0) Add inline constants validation in `CreateLayout`
+**Files**
+- `Graphics/GraphicsEngineOpenGL/src/PipelineResourceSignatureGLImpl.cpp`
+
+**Changes**
+- At the beginning of resource processing in `CreateLayout()`, add validation for inline constants:
+```cpp
+if (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
+{
+    DEV_CHECK_ERR(ResDesc.ResourceType == SHADER_RESOURCE_TYPE_CONSTANT_BUFFER,
+                  "Only constant buffers can have INLINE_CONSTANTS flag");
+    DEV_CHECK_ERR((ResDesc.Flags & ~PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS) == 0,
+                  "INLINE_CONSTANTS flag cannot be combined with other flags");
+    DEV_CHECK_ERR(ResDesc.ArraySize <= MAX_INLINE_CONSTANTS,
+                  "ArraySize exceeds MAX_INLINE_CONSTANTS");
+}
+```
+
+**Reference (D3D11)**
+- `Graphics/GraphicsEngineD3D11/src/PipelineResourceSignatureD3D11Impl.cpp:157` (inline constants only for CBs)
+- `Graphics/GraphicsEngineD3D11/src/PipelineStateD3D11Impl.cpp:96` (flag exclusivity)
+
+**Reference (Vulkan)**
+- `Graphics/GraphicsEngineVulkan/src/PipelineResourceSignatureVkImpl.cpp:200` (inline constants only for CBs)
+- `Graphics/GraphicsEngineVulkan/src/PipelineStateVkImpl.cpp:702` (flag exclusivity)
+
 ### 1) Define inline-constant metadata for GL signatures
 **Files**
 - `Graphics/GraphicsEngineOpenGL/include/PipelineResourceSignatureGLImpl.hpp`
@@ -53,6 +79,31 @@
     - push `InlineConstantBufferAttribsGL{CacheOffset, ResDesc.ArraySize, pBuffer}`
     - increment `m_TotalInlineConstants += ResDesc.ArraySize`
 
+**Existing Bugs to Fix**
+
+The current code has bugs that will cause incorrect behavior for inline constants:
+
+1. **CacheOffset calculation** (`PipelineResourceSignatureGLImpl.cpp:188`):
+   ```cpp
+   // Current (wrong):
+   CacheOffset += static_cast<TBindings::value_type>(ResDesc.ArraySize);
+   // Should be:
+   CacheOffset += static_cast<TBindings::value_type>(ResDesc.GetArraySize());
+   ```
+   This causes inline constants' `ArraySize` (number of 32-bit constants) to be incorrectly treated as UBO array length.
+
+2. **Dynamic UBO mask calculation** (`PipelineResourceSignatureGLImpl.cpp:174-177`):
+   ```cpp
+   // Current (wrong):
+   for (Uint64 elem = 0; elem < ResDesc.ArraySize; ++elem)
+       m_DynamicUBOMask |= Uint64{1} << (Uint64{CacheOffset} + elem);
+   // Should use ResDesc.GetArraySize() instead
+   ```
+   For inline constants, this sets too many bits in the dynamic UBO mask.
+
+3. **Static cache counter** (`PipelineResourceSignatureGLImpl.cpp:191-195`):
+   Since `CacheOffset` is incorrectly incremented, the static resource counter will also be wrong.
+
 **Reference (D3D11)**
 - `Graphics/GraphicsEngineD3D11/src/PipelineResourceSignatureD3D11Impl.cpp:217` (`ResDesc.GetArraySize()` for binding count)
 - `Graphics/GraphicsEngineD3D11/src/PipelineResourceSignatureD3D11Impl.cpp:248` (inline-constant buffer creation)
@@ -70,11 +121,21 @@
 - Extend `CachedUB` with:
   - `void* pInlineConstantData = nullptr`
   - `void SetInlineConstants(const void* pSrc, Uint32 First, Uint32 Num)`
-- Add a `m_HasInlineConstants` flag and `HasInlineConstants()` implementation.
+- Add a `m_HasInlineConstants` flag.
+  - **Important**: Set this flag in `Initialize()` based on `TotalInlineConstants > 0`.
+  - Update existing stub `HasInlineConstants()` to return `m_HasInlineConstants`.
+- Update `Initialize()` signature to add `Uint32 TotalInlineConstants` parameter:
+  ```cpp
+  // Current:
+  void Initialize(const GLResourceCounters& ResCount, IMemoryAllocator& Allocator, 
+                  Uint64 DynamicUBOMask, Uint64 DynamicSSBOMask);
+  // Change to:
+  void Initialize(const GLResourceCounters& ResCount, IMemoryAllocator& Allocator, 
+                  Uint64 DynamicUBOMask, Uint64 DynamicSSBOMask, Uint32 TotalInlineConstants);
+  ```
 - Update memory layout to include `InlineConstantData` tail:
   - `GetRequiredMemorySize(ResCount, TotalInlineConstants)`
-  - `Initialize(ResCount, MemAllocator, DynamicUBOMask, DynamicSSBOMask, TotalInlineConstants)`
-- Add helper:
+- Add helpers:
   - `InitInlineConstantBuffer(CacheOffset, pBuffer, NumConstants, pInlineData)`
   - `SetInlineConstants(CacheOffset, pConstants, First, Num)`
   - `CopyInlineConstants(SrcCache, CacheOffset, NumConstants)`
@@ -146,12 +207,17 @@
     - memcpy `NumConstants * 4`
     - unmap
 - In `DeviceContextGLImpl::BindProgramResources()`:
-  - If SRB has inline constants and (SRB stale or not intact), call `UpdateInlineConstantBuffers()` before binding.
+  - **Important**: Call `UpdateInlineConstantBuffers()` at the **beginning** of `BindProgramResources` (before binding resources).
+  - If SRB has inline constants and (SRB stale or not intact), call `UpdateInlineConstantBuffers()`.
   - Mirror D3D11 logic:
     - use `m_BindInfo.InlineConstantsSRBMask`
     - verify `ResourceCache.HasInlineConstants()`
     - respect `DRAW_FLAG_INLINE_CONSTANTS_INTACT` in graphics draw paths
-  - Compute paths keep default behavior (always update when present), matching D3D11.
+  - Compute paths: Both compute dispatch paths call `BindProgramResources`, so inline constant updates will be handled automatically if the check is placed correctly within that function.
+
+**Compute Shader Path References**
+- `Graphics/GraphicsEngineOpenGL/src/DeviceContextGLImpl.cpp:1367` (compute dispatch)
+- `Graphics/GraphicsEngineOpenGL/src/DeviceContextGLImpl.cpp:1397` (compute indirect dispatch)
 
 **Reference (D3D11)**
 - `Graphics/GraphicsEngineD3D11/src/DeviceContextD3D11Impl.cpp:489` (inline-constant commit decision)
@@ -178,23 +244,7 @@
 **Reference (Vulkan)**
 - `Graphics/GraphicsEngineVulkan/src/PipelineResourceSignatureVkImpl.cpp:685` (copy inline-constant staging data)
 
-### 8) Validation and edge cases
-- Ensure inline constants:
-  - only constant buffers
-  - flag is exclusive
-  - `ArraySize <= MAX_INLINE_CONSTANTS`
-- Ensure GL binding counts do not treat `ArraySize` as UBO array length when `INLINE_CONSTANTS` is set.
-- Confirm shared UBO per signature (not per SRB), per D3D11.
-
-**Reference (D3D11)**
-- `Graphics/GraphicsEngineD3D11/src/PipelineResourceSignatureD3D11Impl.cpp:157` (inline constants only for CBs)
-- `Graphics/GraphicsEngineD3D11/src/PipelineStateD3D11Impl.cpp:96` (flag exclusivity)
-
-**Reference (Vulkan)**
-- `Graphics/GraphicsEngineVulkan/src/PipelineResourceSignatureVkImpl.cpp:200` (inline constants only for CBs)
-- `Graphics/GraphicsEngineVulkan/src/PipelineStateVkImpl.cpp:702` (flag exclusivity)
-
-## Testing Plan
+### 8) Enable tests
 - Reuse the existing multi-backend test in `Tests/DiligentCoreAPITest/src/InlineConstantsTest.cpp` (graphics + compute coverage is already present).
 - Enable OpenGL by removing/relaxing the backend guard in `InlineConstants::SetUpTestSuite()` so GL is not skipped once the impl is ready.
 - No new test code is required; run the existing suite to validate inline constant updates and SRB behavior.
@@ -218,3 +268,20 @@
 - No binding count inflation from `ArraySize` when `INLINE_CONSTANTS` is set.
 - Inline constants update only when SRB is stale or `DRAW_FLAG_INLINE_CONSTANTS_INTACT` is not set.
 - Static inline constants propagate into SRB caches on creation.
+
+## Optional (Not MVP)
+- **Serialization/deserialization support**: If PSO cache/archive support is needed, `InlineConstantBufferAttribsGL` serialization and deserialization must also be handled. This can be deferred.
+
+---
+
+## Recommended Implementation Order
+
+1. **Step 0**: Add inline constants validation in `CreateLayout`
+2. **Step 1**: Define `InlineConstantBufferAttribsGL` structure
+3. **Step 2**: Fix binding count calculation in `CreateLayout` (use `GetArraySize()`) and create shared buffer
+4. **Step 3**: Extend `ShaderResourceCacheGL` for inline constant staging
+5. **Step 4**: Initialize SRB cache and bind shared buffer
+6. **Step 5**: Implement `ShaderVariableManagerGL::SetConstants`
+7. **Step 6**: Add commit path in `DeviceContextGLImpl` (graphics + compute)
+8. **Step 7**: Implement static inline constants copy
+9. **Step 8**: Enable tests
