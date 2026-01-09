@@ -94,7 +94,7 @@ PipelineResourceSignatureGLImpl::PipelineResourceSignatureGLImpl(IReferenceCount
             },
             [this]() //
             {
-                return ShaderResourceCacheGL::GetRequiredMemorySize(m_BindingCount);
+                return ShaderResourceCacheGL::GetRequiredMemorySize(m_BindingCount, m_TotalInlineConstants);
             });
     }
     catch (...)
@@ -779,7 +779,7 @@ PipelineResourceSignatureGLImpl::PipelineResourceSignatureGLImpl(IReferenceCount
             },
             [this]() //
             {
-                return ShaderResourceCacheGL::GetRequiredMemorySize(m_BindingCount);
+                return ShaderResourceCacheGL::GetRequiredMemorySize(m_BindingCount, m_TotalInlineConstants);
             });
     }
     catch (...)

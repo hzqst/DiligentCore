@@ -259,6 +259,50 @@ The current code has bugs that will cause incorrect behavior for inline constant
 8. **Fixed type conversion warning** (`PipelineResourceSignatureGLImpl.cpp:226`):
    - Added explicit cast: `m_TotalInlineConstants += static_cast<Uint16>(ResDesc.ArraySize)` to fix C4244 warning
 
+### 3.5) Fix SRB memory size estimate to include inline constants
+
+**Files**
+- `Graphics/GraphicsEngineOpenGL/src/PipelineResourceSignatureGLImpl.cpp`
+
+**Problem**
+When creating a pipeline resource signature, the `Initialize()` and `Deserialize()` functions use a lambda to estimate SRB cache memory size for the `FixedBlockMemoryAllocator`. If this estimate doesn't include inline constant storage, but `InitSRBResourceCache()` later allocates space for inline constants, the allocator will fail with:
+```
+Requested size (X) does not match the block size (Y)
+```
+
+**Root Cause**
+The constructor lambdas were calling `GetRequiredMemorySize(m_BindingCount)` without passing `m_TotalInlineConstants`:
+```cpp
+// WRONG - defaults TotalInlineConstants to 0:
+[this]() { return ShaderResourceCacheGL::GetRequiredMemorySize(m_BindingCount); }
+
+// CORRECT - includes inline constant storage:
+[this]() { return ShaderResourceCacheGL::GetRequiredMemorySize(m_BindingCount, m_TotalInlineConstants); }
+```
+
+Even though `CreateLayout()` populates `m_TotalInlineConstants` before the lambda is called, the lambda must explicitly pass it to `GetRequiredMemorySize()`.
+
+**Changes**
+1. **Regular constructor** (`PipelineResourceSignatureGLImpl.cpp:97`):
+   - Changed `GetRequiredMemorySize(m_BindingCount)` to `GetRequiredMemorySize(m_BindingCount, m_TotalInlineConstants)`
+
+2. **Deserialization constructor** (`PipelineResourceSignatureGLImpl.cpp:782`):
+   - Same fix applied
+
+**Reference (D3D11)**
+- `Graphics/GraphicsEngineD3D11/src/PipelineResourceSignatureD3D11Impl.cpp:172` (uses `m_TotalInlineConstants` in size estimate)
+
+**Reference (Vulkan)**
+- `Graphics/GraphicsEngineVulkan/src/PipelineResourceSignatureVkImpl.cpp:156` (uses `m_TotalInlineConstants` in size estimate)
+
+**Status: COMPLETED**
+
+**IMPORTANT for future backend implementations:**
+When adding inline constants support to a new backend, ensure the SRB memory size estimate lambda in both constructors includes `m_TotalInlineConstants`. This is easy to miss because:
+1. The code compiles without it (parameter has default value of 0)
+2. Tests pass until inline constants are actually used
+3. The error message doesn't directly point to the root cause
+
 ### 4) Initialize SRB cache with inline constant buffers
 **Files**
 - `Graphics/GraphicsEngineOpenGL/src/PipelineResourceSignatureGLImpl.cpp`
@@ -468,8 +512,9 @@ The current code has bugs that will cause incorrect behavior for inline constant
 2. **Step 1.5**: Fix ArraySize in `GetDefaultSignatureDesc` for inline constants (add `BufferSize` to `UniformBufferInfo`)
 3. **Step 2**: Fix binding count calculation in `CreateLayout` (use `GetArraySize()`) and create shared buffer
 4. **Step 3**: Extend `ShaderResourceCacheGL` for inline constant staging
-5. **Step 4**: Initialize SRB cache and bind shared buffer
-6. **Step 5**: Implement `ShaderVariableManagerGL::SetConstants`
-7. **Step 6**: Add commit path in `DeviceContextGLImpl` (graphics + compute)
-8. **Step 7**: Implement static inline constants copy
-9. **Step 8**: Enable tests
+5. **Step 3.5**: Fix SRB memory size estimate to include `m_TotalInlineConstants` in constructor lambdas
+6. **Step 4**: Initialize SRB cache and bind shared buffer
+7. **Step 5**: Implement `ShaderVariableManagerGL::SetConstants`
+8. **Step 6**: Add commit path in `DeviceContextGLImpl` (graphics + compute)
+9. **Step 7**: Implement static inline constants copy
+10. **Step 8**: Enable tests
