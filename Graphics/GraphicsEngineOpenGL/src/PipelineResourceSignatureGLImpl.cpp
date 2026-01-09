@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -106,6 +106,23 @@ void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
 {
     TBindings StaticResCounter = {};
 
+    // First pass: count inline constant buffers
+    for (Uint32 i = 0; i < m_Desc.NumResources; ++i)
+    {
+        const PipelineResourceDesc& ResDesc = m_Desc.Resources[i];
+        if (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
+        {
+            VERIFY(ResDesc.ResourceType == SHADER_RESOURCE_TYPE_CONSTANT_BUFFER, "Only constant buffers can have INLINE_CONSTANTS flag");
+            ++m_NumInlineConstantBuffers;
+        }
+    }
+
+    if (m_NumInlineConstantBuffers > 0)
+    {
+        m_InlineConstantBuffers = std::make_unique<InlineConstantBufferAttribsGL[]>(m_NumInlineConstantBuffers);
+    }
+
+    Uint32 InlineConstantBufferIdx = 0;
     for (Uint32 i = 0; i < m_Desc.NumResources; ++i)
     {
         const PipelineResourceDesc& ResDesc = m_Desc.Resources[i];
@@ -170,21 +187,47 @@ void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
                               "Deserialized immutable sampler flag is invalid.");
             }
 
-            if (Range == BINDING_RANGE_UNIFORM_BUFFER && (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_NO_DYNAMIC_BUFFERS) == 0)
+            // For inline constants, ArraySize holds the number of 4-byte constants, while
+            // the resource occupies a single constant buffer slot.
+            const Uint32 ArraySize = ResDesc.GetArraySize();
+
+            if (Range == BINDING_RANGE_UNIFORM_BUFFER &&
+                (ResDesc.Flags & (PIPELINE_RESOURCE_FLAG_NO_DYNAMIC_BUFFERS | PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)) == 0)
             {
-                DEV_CHECK_ERR(size_t{CacheOffset} + ResDesc.ArraySize < sizeof(m_DynamicUBOMask) * 8, "Dynamic UBO index exceeds maximum representable bit position in the mask");
-                for (Uint64 elem = 0; elem < ResDesc.ArraySize; ++elem)
+                DEV_CHECK_ERR(size_t{CacheOffset} + ArraySize < sizeof(m_DynamicUBOMask) * 8, "Dynamic UBO index exceeds maximum representable bit position in the mask");
+                for (Uint64 elem = 0; elem < ArraySize; ++elem)
                     m_DynamicUBOMask |= Uint64{1} << (Uint64{CacheOffset} + elem);
             }
             else if (Range == BINDING_RANGE_STORAGE_BUFFER && (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_NO_DYNAMIC_BUFFERS) == 0)
             {
-                DEV_CHECK_ERR(size_t{CacheOffset} + ResDesc.ArraySize < sizeof(m_DynamicSSBOMask) * 8, "Dynamic SSBO index exceeds maximum representable bit position in the mask");
-                for (Uint64 elem = 0; elem < ResDesc.ArraySize; ++elem)
+                DEV_CHECK_ERR(size_t{CacheOffset} + ArraySize < sizeof(m_DynamicSSBOMask) * 8, "Dynamic SSBO index exceeds maximum representable bit position in the mask");
+                for (Uint64 elem = 0; elem < ArraySize; ++elem)
                     m_DynamicSSBOMask |= Uint64{1} << (Uint64{CacheOffset} + elem);
             }
 
-            VERIFY(CacheOffset + ResDesc.ArraySize <= std::numeric_limits<TBindings::value_type>::max(), "Cache offset exceeds representable range");
-            CacheOffset += static_cast<TBindings::value_type>(ResDesc.ArraySize);
+            if (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
+            {
+                // Inline constant buffers are handled mostly like regular constant buffers. The only
+                // difference is that the buffer is created internally here and is not expected to be bound.
+                // It is updated by UpdateInlineConstantBuffers() method.
+
+                VERIFY(ResDesc.ResourceType == SHADER_RESOURCE_TYPE_CONSTANT_BUFFER, "Only constant buffers can have INLINE_CONSTANTS flag");
+                InlineConstantBufferAttribsGL& InlineCBAttribs{m_InlineConstantBuffers[InlineConstantBufferIdx++]};
+                InlineCBAttribs.CacheOffset  = CacheOffset;
+                InlineCBAttribs.NumConstants = ResDesc.ArraySize;
+
+                // All SRBs created from this signature will share the same inline constant buffer.
+                // An alternative design is to have a separate inline constant buffer for each SRB,
+                // which will allow skipping buffer update if the inline constants are not changed.
+                // However, this will increase memory consumption as each SRB will have its own copy of the inline CB.
+                // Besides, inline constants are expected to change frequently, so skipping updates is unlikely.
+                InlineCBAttribs.pBuffer = CreateInlineConstantBuffer(ResDesc.Name, ResDesc.ArraySize);
+
+                m_TotalInlineConstants += ResDesc.ArraySize;
+            }
+
+            VERIFY(CacheOffset + ArraySize <= std::numeric_limits<TBindings::value_type>::max(), "Cache offset exceeds representable range");
+            CacheOffset += static_cast<TBindings::value_type>(ArraySize);
 
             if (ResDesc.VarType == SHADER_RESOURCE_VARIABLE_TYPE_STATIC)
             {
@@ -194,6 +237,7 @@ void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
             }
         }
     }
+    VERIFY_EXPR(InlineConstantBufferIdx == m_NumInlineConstantBuffers);
 
     if (m_pStaticResCache)
     {
