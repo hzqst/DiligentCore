@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2026 Diligent Graphics LLC
+ *  Copyright 2019-2025 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -290,7 +290,7 @@ private:
 
         void RegisterStruct(TokenListType::iterator& Token);
 
-        void ProcessConstantBuffer(TokenListType::iterator& Token, Uint32& UniformBlockBinding);
+        void ProcessConstantBuffer(TokenListType::iterator& Token);
         void ProcessStructuredBuffer(TokenListType::iterator& Token, Uint32& ShaderStorageBlockBinding);
         void ProcessPreprocessorDirective(TokenListType::iterator& Token);
         void ParseSamplers(TokenListType::iterator& ScopeStart, SamplerHashType& SamplersHash);
