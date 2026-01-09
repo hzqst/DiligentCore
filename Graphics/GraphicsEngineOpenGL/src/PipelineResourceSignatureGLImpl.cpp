@@ -33,6 +33,8 @@
 #include <functional>
 
 #include "RenderDeviceGLImpl.hpp"
+#include "BufferGLImpl.hpp"
+#include "GLContextState.hpp"
 
 namespace Diligent
 {
@@ -574,6 +576,25 @@ void PipelineResourceSignatureGLImpl::CopyStaticResources(ShaderResourceCacheGL&
 #ifdef DILIGENT_DEBUG
     DstResourceCache.DbgVerifyDynamicBufferMasks();
 #endif
+}
+
+void PipelineResourceSignatureGLImpl::UpdateInlineConstantBuffers(const ShaderResourceCacheGL& ResourceCache, GLContextState& CtxState) const
+{
+    for (Uint32 i = 0; i < m_NumInlineConstantBuffers; ++i)
+    {
+        const InlineConstantBufferAttribsGL& InlineCBAttr = GetInlineConstantBuffer(i);
+        VERIFY_EXPR(InlineCBAttr.pBuffer);
+
+        const ShaderResourceCacheGL::CachedUB& InlineCB = ResourceCache.GetConstUB(InlineCBAttr.CacheOffset);
+        VERIFY(InlineCBAttr.NumConstants * sizeof(Uint32) == InlineCB.RangeSize, "Inline constant buffer size mismatch");
+        VERIFY(InlineCB.pInlineConstantData != nullptr, "Inline constant data pointer is null");
+
+        // Map the shared buffer and copy the data
+        PVoid pMappedData = nullptr;
+        InlineCBAttr.pBuffer->Map(CtxState, MAP_WRITE, MAP_FLAG_DISCARD, pMappedData);
+        memcpy(pMappedData, InlineCB.pInlineConstantData, InlineCBAttr.NumConstants * sizeof(Uint32));
+        InlineCBAttr.pBuffer->Unmap(CtxState);
+    }
 }
 
 void PipelineResourceSignatureGLImpl::InitSRBResourceCache(ShaderResourceCacheGL& ResourceCache)

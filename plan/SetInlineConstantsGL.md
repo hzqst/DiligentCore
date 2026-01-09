@@ -309,28 +309,20 @@ The current code has bugs that will cause incorrect behavior for inline constant
 ### 6) Commit path: update UBOs before binding
 **Files**
 - `Graphics/GraphicsEngineOpenGL/src/DeviceContextGLImpl.cpp`
+- `Graphics/GraphicsEngineOpenGL/include/DeviceContextGLImpl.hpp`
 - `Graphics/GraphicsEngineOpenGL/include/PipelineResourceSignatureGLImpl.hpp`
 - `Graphics/GraphicsEngineOpenGL/src/PipelineResourceSignatureGLImpl.cpp`
 
 **Changes**
-- Add `PipelineResourceSignatureGLImpl::UpdateInlineConstantBuffers(...)`:
-  - For each `InlineConstantBufferAttribsGL`:
-    - read `pInlineConstantData` from cache
-    - map shared UBO (MAP_WRITE | MAP_FLAG_DISCARD)
-    - memcpy `NumConstants * 4`
-    - unmap
+- Add `PipelineResourceSignatureGLImpl::UpdateInlineConstantBuffers(...)`
 - In `DeviceContextGLImpl::BindProgramResources()`:
-  - **Important**: Call `UpdateInlineConstantBuffers()` at the **beginning** of `BindProgramResources` (before binding resources).
-  - If SRB has inline constants and (SRB stale or not intact), call `UpdateInlineConstantBuffers()`.
-  - Mirror D3D11 logic:
-    - use `m_BindInfo.InlineConstantsSRBMask`
-    - verify `ResourceCache.HasInlineConstants()`
-    - respect `DRAW_FLAG_INLINE_CONSTANTS_INTACT` in graphics draw paths
-  - Compute paths: Both compute dispatch paths call `BindProgramResources`, so inline constant updates will be handled automatically if the check is placed correctly within that function.
+  - Update inline constants when SRB is stale or inline constants are not intact
+  - Mirror D3D11 logic with `InlineConstantsSRBMask`
+  - Respect `DRAW_FLAG_INLINE_CONSTANTS_INTACT` in graphics draw paths
 
 **Compute Shader Path References**
-- `Graphics/GraphicsEngineOpenGL/src/DeviceContextGLImpl.cpp:1367` (compute dispatch)
-- `Graphics/GraphicsEngineOpenGL/src/DeviceContextGLImpl.cpp:1397` (compute indirect dispatch)
+- `Graphics/GraphicsEngineOpenGL/src/DeviceContextGLImpl.cpp:1406` (compute dispatch)
+- `Graphics/GraphicsEngineOpenGL/src/DeviceContextGLImpl.cpp:1436` (compute indirect dispatch)
 
 **Reference (D3D11)**
 - `Graphics/GraphicsEngineD3D11/src/DeviceContextD3D11Impl.cpp:489` (inline-constant commit decision)
@@ -339,6 +331,45 @@ The current code has bugs that will cause incorrect behavior for inline constant
 **Reference (Vulkan)**
 - `Graphics/GraphicsEngineVulkan/src/DeviceContextVkImpl.cpp:418` (`CommitInlineConstants`)
 - `Graphics/GraphicsEngineVulkan/src/PipelineResourceSignatureVkImpl.cpp:1125` (`CommitInlineConstants`)
+
+**Status: COMPLETED**
+
+**Changes Made**
+1. **Added `UpdateInlineConstantBuffers` method declaration** (`PipelineResourceSignatureGLImpl.hpp:145`):
+   - Added method signature: `void UpdateInlineConstantBuffers(const ShaderResourceCacheGL& ResourceCache, class GLContextState& CtxState) const;`
+
+2. **Implemented `UpdateInlineConstantBuffers`** (`PipelineResourceSignatureGLImpl.cpp:578-601`):
+   - Loops through all inline constant buffers
+   - For each buffer: reads staging data from cache, maps shared UBO with `MAP_WRITE | MAP_FLAG_DISCARD`, copies data, unmaps
+
+3. **Added includes for buffer mapping** (`PipelineResourceSignatureGLImpl.cpp:35-36`):
+   - Added `#include "BufferGLImpl.hpp"`
+   - Added `#include "GLContextState.hpp"`
+
+4. **Updated `BindProgramResources` signature** (`DeviceContextGLImpl.hpp:328`):
+   - Changed from `void BindProgramResources(Uint32 BindSRBMask);`
+   - To `void BindProgramResources(Uint32 BindSRBMask, bool DynamicBuffersIntact = false, bool InlineConstantsIntact = false);`
+
+5. **Updated `BindProgramResources` implementation** (`DeviceContextGLImpl.cpp:701-776`):
+   - Added `SRBStale` flag tracking
+   - Updated VERIFY check to include `InlineConstantsSRBMask`
+   - Added inline constant update block after resource binding:
+     - Checks `InlineConstantsSRBMask & SignBit`
+     - Verifies cache `HasInlineConstants()` consistency
+     - Calls `UpdateInlineConstantBuffers` when `SRBStale || !InlineConstantsIntact`
+   - Mirrors D3D11 implementation pattern exactly
+
+6. **Updated `PrepareForDraw` call site** (`DeviceContextGLImpl.cpp:838-844`):
+   - Extracts `DynamicBuffersIntact` and `InlineConstantsIntact` flags
+   - Passes both flags to `BindProgramResources`
+
+7. **Compute dispatch paths** (`DeviceContextGLImpl.cpp:1406, 1436`):
+   - Use default parameter values `false` for both intact flags
+   - Inline constants always updated for compute shaders (no intact flag available)
+
+8. **Updated copyright years**:
+   - `DeviceContextGLImpl.cpp`: 2019-2025 → 2019-2026
+   - `DeviceContextGLImpl.hpp`: 2019-2025 → 2019-2026
 
 ### 7) Copy static inline constants into SRB cache
 **Files**

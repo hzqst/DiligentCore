@@ -141,6 +141,10 @@ public:
     // Make the base class method visible
     using TPipelineResourceSignatureBase::CopyStaticResources;
 
+    // Updates inline constant buffers by mapping the shared dynamic UBOs and copying
+    // data from the CPU-side staging buffer in the resource cache.
+    void UpdateInlineConstantBuffers(const ShaderResourceCacheGL& ResourceCache, class GLContextState& CtxState) const;
+
     bool HasInlineConstants() const
     {
         return m_NumInlineConstantBuffers != 0;
