@@ -364,15 +364,15 @@ public:
         return m_HasInlineConstants;
     }
 
-    void InitInlineConstantBuffer(Uint32                         CacheOffset,
-                                   RefCntAutoPtr<BufferGLImpl>&&  pBuffer,
-                                   Uint32                         NumConstants,
-                                   void*                          pInlineConstantData)
+    void InitInlineConstantBuffer(Uint32                        CacheOffset,
+                                  RefCntAutoPtr<BufferGLImpl>&& pBuffer,
+                                  Uint32                        NumConstants,
+                                  void*                         pInlineConstantData)
     {
         VERIFY_EXPR(pBuffer);
         VERIFY_EXPR(pInlineConstantData);
 
-        CachedUB& UB = GetUB(CacheOffset);
+        CachedUB& UB           = GetUB(CacheOffset);
         UB.pBuffer             = std::move(pBuffer);
         UB.BaseOffset          = 0;
         UB.RangeSize           = NumConstants * sizeof(Uint32);
@@ -382,10 +382,10 @@ public:
         UpdateRevision();
     }
 
-    void SetInlineConstants(Uint32       CacheOffset,
-                           const void*  pConstants,
-                           Uint32       FirstConstant,
-                           Uint32       NumConstants)
+    void SetInlineConstants(Uint32      CacheOffset,
+                            const void* pConstants,
+                            Uint32      FirstConstant,
+                            Uint32      NumConstants)
     {
         VERIFY(CacheOffset < GetUBCount(), "Cache offset is out of range");
         CachedUB& UB = GetUB(CacheOffset);
@@ -394,8 +394,8 @@ public:
     }
 
     void CopyInlineConstants(const ShaderResourceCacheGL& SrcCache,
-                            Uint32                       CacheOffset,
-                            Uint32                       NumConstants)
+                             Uint32                       CacheOffset,
+                             Uint32                       NumConstants)
     {
         VERIFY(CacheOffset < GetUBCount(), "Destination index is out of range");
         VERIFY(CacheOffset < SrcCache.GetUBCount(), "Source index is out of range");
