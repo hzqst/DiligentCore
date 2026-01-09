@@ -567,23 +567,6 @@ When implementing inline constants for a new backend, the `SetInlineConstants()`
 - Inline constants update only when SRB is stale or `DRAW_FLAG_INLINE_CONSTANTS_INTACT` is not set.
 - Static inline constants propagate into SRB caches on creation.
 
----
-
-## Recommended Implementation Order
-
-1. **Step 1**: Define `InlineConstantBufferAttribsGL` structure
-2. **Step 1.5**: Fix ArraySize in `GetDefaultSignatureDesc` for inline constants (add `BufferSize` to `UniformBufferInfo`)
-3. **Step 2**: Fix binding count calculation in `CreateLayout` (use `GetArraySize()`) and create shared buffer
-4. **Step 3**: Extend `ShaderResourceCacheGL` for inline constant staging
-5. **Step 3.5**: Fix SRB memory size estimate to include `m_TotalInlineConstants` in constructor lambdas
-6. **Step 4**: Initialize SRB cache and bind shared buffer
-7. **Step 4.5**: Bug fix - only initialize static inline constants in static cache
-8. **Step 5**: Implement `ShaderVariableManagerGL::SetConstants`
-9. **Step 6**: Add commit path in `DeviceContextGLImpl` (graphics + compute)
-10. **Step 7**: Implement static inline constants copy
-11. **Step 8**: Enable tests
-12. **Step 8.5**: Bug fix - `SetInlineConstants` must NOT call `UpdateRevision()`
-13. **Step 8.6**: Bug fix - Re-bind inline constant buffers after update when using compatible SRB
 
 ### 8.6) Bug Fix: Re-bind inline constant buffers after update when using compatible SRB
 
@@ -624,3 +607,22 @@ This ensures that even when an SRB from a compatible but different signature is 
 
 **CRITICAL for future backend implementations:**
 In OpenGL, each signature creates its own shared inline constant buffers. When an SRB from a compatible but different signature is used, the SRB's cache contains buffer pointers to the original signature's buffers. After updating inline constants, the current signature's buffers must be explicitly bound to override the previously bound buffers.
+
+---
+
+## Recommended Implementation Order
+
+1. **Step 1**: Define `InlineConstantBufferAttribsGL` structure
+2. **Step 1.5**: Fix ArraySize in `GetDefaultSignatureDesc` for inline constants (add `BufferSize` to `UniformBufferInfo`)
+3. **Step 2**: Fix binding count calculation in `CreateLayout` (use `GetArraySize()`) and create shared buffer
+4. **Step 3**: Extend `ShaderResourceCacheGL` for inline constant staging
+5. **Step 3.5**: Fix SRB memory size estimate to include `m_TotalInlineConstants` in constructor lambdas
+6. **Step 4**: Initialize SRB cache and bind shared buffer
+7. **Step 4.5**: Bug fix - only initialize static inline constants in static cache
+8. **Step 5**: Implement `ShaderVariableManagerGL::SetConstants`
+9. **Step 6**: Add commit path in `DeviceContextGLImpl` (graphics + compute)
+10. **Step 7**: Implement static inline constants copy
+11. **Step 8**: Enable tests
+12. **Step 8.4**: Bug fix - HLSL2GLSLConverter not not assigning explicit layout(binding=N) qualifiers to uniform blocks (cbuffers).
+12. **Step 8.5**: Bug fix - `SetInlineConstants` must NOT call `UpdateRevision()`
+13. **Step 8.6**: Bug fix - Re-bind inline constant buffers after update when using compatible SRB
