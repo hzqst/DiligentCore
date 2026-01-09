@@ -25,6 +25,7 @@
  */
 
 #include "GPUTestingEnvironment.hpp"
+#include "TestingSwapChainBase.hpp"
 
 #include "gtest/gtest.h"
 
@@ -33,12 +34,14 @@
 #include "FastRand.hpp"
 
 
+
 namespace Diligent
 {
 namespace Testing
 {
 void RenderDrawCommandReference(ISwapChain* pSwapChain, const float* pClearColor = nullptr);
-}
+void ComputeShaderReference(ISwapChain* pSwapChain);
+} // namespace Testing
 } // namespace Diligent
 
 
@@ -158,15 +161,18 @@ cbuffer cbInlineData
     float4 g_Data[4];
 }
 
-RWTexture2D<float4> g_Output;
+#ifndef VK_IMAGE_FORMAT
+#   define VK_IMAGE_FORMAT(x)
+#endif
+
+VK_IMAGE_FORMAT("rgba8") RWTexture2D</*format=rgba8*/ float4> g_Output;
 
 [numthreads(16, 16, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)
 {
-    // Use inline constants to write to output texture
-    // Index into g_Data based on position to verify all constants are correctly set
-    uint idx = (DTid.x / 64 + DTid.y / 64 * 2) % 4;
-    g_Output[DTid.xy] = g_Data[idx];
+    float4 Color = float4(float2(DTid.xy % 256u) / 256.0, 0.0, 1.0);
+    Color *= (g_Data[0] + g_Data[1] + g_Data[2]) * g_Data[3];
+    g_Output[DTid.xy] = Color;
 }
 )"};
 
@@ -189,10 +195,10 @@ float4 g_Colors[] = {
 };
 
 float4 g_ComputeData[] = {
-    float4{1.f, 0.f, 0.f, 1.f}, // Red
-    float4{0.f, 1.f, 0.f, 1.f}, // Green
-    float4{0.f, 0.f, 1.f, 1.f}, // Blue
-    float4{1.f, 1.f, 0.f, 1.f}, // Yellow
+    float4{1.f, 0.f, 0.f, 0.f},
+    float4{0.f, 1.f, 0.f, 0.f},
+    float4{0.f, 0.f, 1.f, 1.f},
+    float4{1.f, 1.f, 1.f, 1.f},
 };
 
 constexpr Uint32 kNumPosConstants     = sizeof(g_Positions) / 4;
@@ -404,6 +410,12 @@ TEST_F(InlineConstants, ComputeResourceLayout)
         GTEST_SKIP() << "Compute shaders are not supported by this device";
     }
 
+    RefCntAutoPtr<ITestingSwapChain> pTestingSwapChain{pSwapChain, IID_TestingSwapChain};
+    if (!pTestingSwapChain)
+    {
+        GTEST_SKIP() << "Compute shader test requires testing swap chain";
+    }
+
     const SwapChainDesc& SCDesc = pSwapChain->GetDesc();
 
     // Create compute shader
@@ -415,28 +427,18 @@ TEST_F(InlineConstants, ComputeResourceLayout)
         ShaderCI.Desc           = {"Inline constants compute test", SHADER_TYPE_COMPUTE, true};
         ShaderCI.EntryPoint     = "main";
         ShaderCI.Source         = HLSL::InlineConstantsTest_CS.c_str();
+        ShaderCI.CompileFlags   = SHADER_COMPILE_FLAG_HLSL_TO_SPIRV_VIA_GLSL;
         pDevice->CreateShader(ShaderCI, &pCS);
         ASSERT_NE(pCS, nullptr);
     }
 
-    // Create output UAV texture
-    RefCntAutoPtr<ITexture> pOutputTex;
-    {
-        TextureDesc TexDesc;
-        TexDesc.Name      = "Inline constants compute output";
-        TexDesc.Type      = RESOURCE_DIM_TEX_2D;
-        TexDesc.Width     = SCDesc.Width;
-        TexDesc.Height    = SCDesc.Height;
-        TexDesc.Format    = TEX_FORMAT_RGBA8_UNORM;
-        TexDesc.BindFlags = BIND_UNORDERED_ACCESS | BIND_SHADER_RESOURCE;
-        pDevice->CreateTexture(TexDesc, nullptr, &pOutputTex);
-        ASSERT_NE(pOutputTex, nullptr);
-    }
-    ITextureView* pOutputUAV = pOutputTex->GetDefaultView(TEXTURE_VIEW_UNORDERED_ACCESS);
+    ITextureView* pOutputUAV = pTestingSwapChain->GetCurrentBackBufferUAV();
     ASSERT_NE(pOutputUAV, nullptr);
 
     for (Uint32 resType = 0; resType < SHADER_RESOURCE_VARIABLE_TYPE_NUM_TYPES; ++resType)
     {
+        ComputeShaderReference(pSwapChain);
+
         SHADER_RESOURCE_VARIABLE_TYPE ResType = static_cast<SHADER_RESOURCE_VARIABLE_TYPE>(resType);
 
         // Create PSO with inline constants
@@ -457,18 +459,15 @@ TEST_F(InlineConstants, ComputeResourceLayout)
         // Set static inline constants on PSO before creating SRB
         if (ResType == SHADER_RESOURCE_VARIABLE_TYPE_STATIC)
         {
-            IShaderResourceVariable* pVar = pPSO->GetStaticVariableByName(SHADER_TYPE_COMPUTE, "cbInlineData");
-            ASSERT_TRUE(pVar);
-            pVar->SetInlineConstants(g_ComputeData, 0, kNumComputeConstants);
+            IShaderResourceVariable* pInlineDataVar = pPSO->GetStaticVariableByName(SHADER_TYPE_COMPUTE, "cbInlineData");
+            ASSERT_NE(pInlineDataVar, nullptr);
+            pInlineDataVar->SetInlineConstants(g_ComputeData, 0, kNumComputeConstants);
         }
 
-        // Set static UAV on PSO
         {
-            IShaderResourceVariable* pVar = pPSO->GetStaticVariableByName(SHADER_TYPE_COMPUTE, "g_Output");
-            if (pVar != nullptr)
-            {
-                pVar->Set(pOutputUAV);
-            }
+            IShaderResourceVariable* pOutputVar = pPSO->GetStaticVariableByName(SHADER_TYPE_COMPUTE, "g_Output");
+            ASSERT_NE(pOutputVar, nullptr);
+            pOutputVar->Set(pOutputUAV);
         }
 
         // Create SRB
@@ -476,21 +475,12 @@ TEST_F(InlineConstants, ComputeResourceLayout)
         pPSO->CreateShaderResourceBinding(&pSRB, true);
         ASSERT_TRUE(pSRB);
 
-        // Set UAV on SRB if not static
-        {
-            IShaderResourceVariable* pVar = pSRB->GetVariableByName(SHADER_TYPE_COMPUTE, "g_Output");
-            if (pVar != nullptr)
-            {
-                pVar->Set(pOutputUAV);
-            }
-        }
-
         // Set mutable/dynamic inline constants on SRB
         IShaderResourceVariable* pDataVar = nullptr;
         if (ResType != SHADER_RESOURCE_VARIABLE_TYPE_STATIC)
         {
             pDataVar = pSRB->GetVariableByName(SHADER_TYPE_COMPUTE, "cbInlineData");
-            ASSERT_TRUE(pDataVar);
+            ASSERT_NE(pDataVar, nullptr);
         }
 
         pContext->SetPipelineState(pPSO);
@@ -515,8 +505,7 @@ TEST_F(InlineConstants, ComputeResourceLayout)
         DispatchAttribs.ThreadGroupCountY = (SCDesc.Height + 15) / 16;
         pContext->DispatchCompute(DispatchAttribs);
 
-        pContext->Flush();
-        pContext->InvalidateState();
+        Present();
 
         std::cout << TestingEnvironment::GetCurrentTestStatusString() << ' '
                   << " ResType " << GetShaderVariableTypeLiteralName(ResType) << std::endl;
@@ -983,7 +972,7 @@ TEST_F(InlineConstants, RenderStateCache)
     }
 }
 
-TEST_F(InlineConstants, VulkanPushConstantsBlock)
+TEST_F(InlineConstants, VulkanPushConstants)
 {
     GPUTestingEnvironment* pEnv       = GPUTestingEnvironment::GetInstance();
     IRenderDevice*         pDevice    = pEnv->GetDevice();
@@ -1043,13 +1032,12 @@ TEST_F(InlineConstants, VulkanPushConstantsBlock)
         // Verify that resource signature was created with correct ArraySize
         ASSERT_EQ(pPSO->GetResourceSignatureCount(), 1u);
         IPipelineResourceSignature* pSign = pPSO->GetResourceSignature(0);
-        ASSERT_TRUE(pSign);
+        ASSERT_NE(pSign, nullptr);
 
         const PipelineResourceSignatureDesc& SignDesc = pSign->GetDesc();
 
         // Find VS and PS push constants in the resource signature
         const PipelineResourceDesc* PushConstantsDesc = nullptr;
-
         for (Uint32 i = 0; i < SignDesc.NumResources; ++i)
         {
             const auto& Res = SignDesc.Resources[i];
@@ -1059,14 +1047,11 @@ TEST_F(InlineConstants, VulkanPushConstantsBlock)
             }
         }
 
-        ASSERT_TRUE(PushConstantsDesc != nullptr) << "PushConstants not found in resource signature";
-
+        ASSERT_NE(PushConstantsDesc, nullptr) << "PushConstants not found in resource signature";
         // Verify inline constants flag
         EXPECT_EQ(PushConstantsDesc->Flags, PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS);
-
         // Verify ArraySize
         EXPECT_EQ(PushConstantsDesc->ArraySize, kNumPosConstants + kNumColConstants);
-
         // Verify ShaderStages
         EXPECT_EQ(PushConstantsDesc->ShaderStages, SHADER_TYPE_VS_PS);
 
@@ -1078,17 +1063,15 @@ TEST_F(InlineConstants, VulkanPushConstantsBlock)
         pContext->SetRenderTargets(1, pRTVs, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         pContext->ClearRenderTarget(pRTVs[0], ClearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-        //They should all goes with resource[0] ("PushConstants") under the hood:
+        //They should all go with resource[0] ("PushConstants") under the hood:
         if (ResType == SHADER_RESOURCE_VARIABLE_TYPE_STATIC)
         {
             IShaderResourceVariable* pVSVar = pPSO->GetStaticVariableByName(SHADER_TYPE_VERTEX, "PushConstants");
-            ASSERT_TRUE(pVSVar);
-
+            ASSERT_NE(pVSVar, nullptr);
             pVSVar->SetInlineConstants(g_Positions, 0, kNumPosConstants);
 
             IShaderResourceVariable* pPSVar = pPSO->GetStaticVariableByName(SHADER_TYPE_PIXEL, "PushConstants");
-            ASSERT_TRUE(pPSVar);
-
+            ASSERT_NE(pPSVar, nullptr);
             pPSVar->SetInlineConstants(g_Colors, kNumPosConstants, kNumColConstants);
         }
 
@@ -1099,13 +1082,11 @@ TEST_F(InlineConstants, VulkanPushConstantsBlock)
         if (ResType != SHADER_RESOURCE_VARIABLE_TYPE_STATIC)
         {
             IShaderResourceVariable* pVSVar = pSRB->GetVariableByName(SHADER_TYPE_VERTEX, "PushConstants");
-            ASSERT_TRUE(pVSVar);
-
+            ASSERT_NE(pVSVar, nullptr);
             pVSVar->SetInlineConstants(g_Positions, 0, kNumPosConstants);
 
             IShaderResourceVariable* pPSVar = pSRB->GetVariableByName(SHADER_TYPE_PIXEL, "PushConstants");
-            ASSERT_TRUE(pPSVar);
-
+            ASSERT_NE(pPSVar, nullptr);
             pPSVar->SetInlineConstants(g_Colors, kNumPosConstants, kNumColConstants);
         }
 
