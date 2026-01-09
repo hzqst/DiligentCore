@@ -148,7 +148,7 @@ PipelineResourceSignatureDescWrapper PipelineStateGLImpl::GetDefaultSignatureDes
                 if (ArraySize == 0)
                 {
                     LOG_ERROR_AND_THROW("Inline constants resource '", UB.Name, "' has zero buffer size. "
-                                        "Make sure the shader was compiled with constant buffer reflection enabled.");
+                                                                                "Make sure the shader was compiled with constant buffer reflection enabled.");
                 }
                 if (ArraySize > MAX_INLINE_CONSTANTS)
                 {
