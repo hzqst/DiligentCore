@@ -389,7 +389,6 @@ The current code has bugs that will cause incorrect behavior for inline constant
 
 ## Recommended Implementation Order
 
-1. **Step 0**: Add inline constants validation in `CreateLayout`
 2. **Step 1**: Define `InlineConstantBufferAttribsGL` structure
 3. **Step 2**: Fix binding count calculation in `CreateLayout` (use `GetArraySize()`) and create shared buffer
 4. **Step 3**: Extend `ShaderResourceCacheGL` for inline constant staging
