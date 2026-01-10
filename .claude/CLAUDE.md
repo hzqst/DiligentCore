@@ -77,9 +77,23 @@ cmake --build build\x64\Debug --target DiligentCore-ValidateFormatting
 ```
 
 ### Testing
+
 Test executables are located in `build\x64\Debug\Tests\...` subdirectories and support gtest parameters:
+
 ```bash
 TestExecutable.exe --gtest_filter=TestName*
+```
+
+Example for testing InlineConstants:
+
+```bash
+cd "\build\x64\Debug\Tests\DiligentCoreAPITest\Debug\"
+
+DiligentCoreAPITest --mode=gl --gtest_filter="DrawCommandTest*:InlineConstants*"
+
+DiligentCoreAPITest --mode=gl --gtest_filter="DrawCommandTest*:InlineConstants*" --non_separable_progs
+
+DiligentCoreAPITest --mode=vk --gtest_filter="DrawCommandTest*:InlineConstants*"
 ```
 
 ### .NET / NuGet Packaging
@@ -118,3 +132,4 @@ python ./BuildTools/.NET/dotnet-build-package.py -c Debug -d ./
 - Always run `BuildTools\FormatValidation\validate_format_win.bat` /
 `BuildTools\FormatValidation\validate_format_linux.sh` after finishing code modification, to verify the codebase after finishing each step. Make sure the formatting validation succeeds. If any formatting issues are found, follow `clang-format`'s advice to fix them.
 - DO NOT run test or build commands unless explicitly requested by the user.
+- Prefer *serena* mcp to explore the code base if available.
