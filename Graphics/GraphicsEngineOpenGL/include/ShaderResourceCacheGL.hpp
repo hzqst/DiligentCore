@@ -364,29 +364,21 @@ public:
         return m_HasInlineConstants;
     }
 
-    // Returns a pointer to the inline constant data at the given offset (in number of 32-bit constants).
-    // The inline constant data is stored at the tail of the resource cache memory, after m_MemoryEndOffset.
-    void* GetInlineConstantDataPtr(Uint32 ConstantOffset) const
-    {
-        VERIFY_EXPR(m_HasInlineConstants);
-        VERIFY_EXPR(m_pResourceData);
-        return reinterpret_cast<Uint32*>(m_pResourceData.get() + m_MemoryEndOffset) + ConstantOffset;
-    }
-
-    void InitInlineConstantBuffer(Uint32                       CacheOffset,
+    void InitInlineConstantBuffer(Uint32                      CacheOffset,
                                   RefCntAutoPtr<BufferGLImpl> pBuffer,
-                                  Uint32                       NumConstants,
-                                  void*                        pInlineConstantData)
+                                  Uint32                      NumConstants,
+                                  Uint32                      InlineConstantOffset)
     {
         VERIFY_EXPR(pBuffer);
-        VERIFY_EXPR(pInlineConstantData);
+        VERIFY_EXPR(m_HasInlineConstants);
+        VERIFY_EXPR(m_pResourceData);
 
         CachedUB& UB           = GetUB(CacheOffset);
         UB.pBuffer             = std::move(pBuffer);
         UB.BaseOffset          = 0;
         UB.RangeSize           = NumConstants * sizeof(Uint32);
         UB.DynamicOffset       = 0;
-        UB.pInlineConstantData = pInlineConstantData;
+        UB.pInlineConstantData = reinterpret_cast<Uint32*>(m_pResourceData.get() + m_MemoryEndOffset) + InlineConstantOffset;
 
         UpdateRevision();
     }

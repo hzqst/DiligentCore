@@ -272,13 +272,11 @@ void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
                 // Mutable and dynamic inline constant buffers are not stored in the static cache.
                 if (InlineCBAttr.CacheOffset < StaticResCounter[BINDING_RANGE_UNIFORM_BUFFER])
                 {
-                    void* pInlineConstantData = m_pStaticResCache->GetInlineConstantDataPtr(InlineConstantOffset);
-
                     m_pStaticResCache->InitInlineConstantBuffer(
                         InlineCBAttr.CacheOffset,
                         InlineCBAttr.pBuffer,
                         InlineCBAttr.NumConstants,
-                        pInlineConstantData);
+                        InlineConstantOffset);
 
                     InlineConstantOffset += InlineCBAttr.NumConstants;
                 }
@@ -658,14 +656,11 @@ void PipelineResourceSignatureGLImpl::InitSRBResourceCache(ShaderResourceCacheGL
             VERIFY_EXPR(InlineCBAttr.pBuffer);
             VERIFY_EXPR(InlineCBAttr.NumConstants > 0);
 
-            // Calculate pointer to inline constant data in the cache memory tail
-            void* pInlineConstantData = ResourceCache.GetInlineConstantDataPtr(InlineConstantOffset);
-
             ResourceCache.InitInlineConstantBuffer(
                 InlineCBAttr.CacheOffset,
                 InlineCBAttr.pBuffer,
                 InlineCBAttr.NumConstants,
-                pInlineConstantData);
+                InlineConstantOffset);
 
             InlineConstantOffset += InlineCBAttr.NumConstants;
         }
