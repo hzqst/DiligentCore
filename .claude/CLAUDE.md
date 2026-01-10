@@ -132,4 +132,4 @@ python ./BuildTools/.NET/dotnet-build-package.py -c Debug -d ./
 - Always run `BuildTools\FormatValidation\validate_format_win.bat` /
 `BuildTools\FormatValidation\validate_format_linux.sh` after finishing code modification, to verify the codebase after finishing each step. Make sure the formatting validation succeeds. If any formatting issues are found, follow `clang-format`'s advice to fix them.
 - DO NOT run test or build commands unless explicitly requested by the user.
-- Prefer *serena* mcp to explore the code base if available.
+- Use *serena* to explore the code base.
