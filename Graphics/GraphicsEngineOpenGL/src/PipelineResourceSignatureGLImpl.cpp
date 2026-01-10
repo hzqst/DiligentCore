@@ -276,7 +276,7 @@ void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
 
                     m_pStaticResCache->InitInlineConstantBuffer(
                         InlineCBAttr.CacheOffset,
-                        RefCntAutoPtr<BufferGLImpl>{InlineCBAttr.pBuffer},
+                        InlineCBAttr.pBuffer,
                         InlineCBAttr.NumConstants,
                         pInlineConstantData);
 
@@ -663,7 +663,7 @@ void PipelineResourceSignatureGLImpl::InitSRBResourceCache(ShaderResourceCacheGL
 
             ResourceCache.InitInlineConstantBuffer(
                 InlineCBAttr.CacheOffset,
-                RefCntAutoPtr<BufferGLImpl>{InlineCBAttr.pBuffer},
+                InlineCBAttr.pBuffer,
                 InlineCBAttr.NumConstants,
                 pInlineConstantData);
 

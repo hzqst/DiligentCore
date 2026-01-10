@@ -373,10 +373,10 @@ public:
         return reinterpret_cast<Uint32*>(m_pResourceData.get() + m_MemoryEndOffset) + ConstantOffset;
     }
 
-    void InitInlineConstantBuffer(Uint32                        CacheOffset,
-                                  RefCntAutoPtr<BufferGLImpl>&& pBuffer,
-                                  Uint32                        NumConstants,
-                                  void*                         pInlineConstantData)
+    void InitInlineConstantBuffer(Uint32                       CacheOffset,
+                                  RefCntAutoPtr<BufferGLImpl> pBuffer,
+                                  Uint32                       NumConstants,
+                                  void*                        pInlineConstantData)
     {
         VERIFY_EXPR(pBuffer);
         VERIFY_EXPR(pInlineConstantData);
