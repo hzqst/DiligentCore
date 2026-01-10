@@ -106,7 +106,7 @@ PipelineResourceSignatureGLImpl::PipelineResourceSignatureGLImpl(IReferenceCount
 
 void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
 {
-    TBindings StaticResCounter    = {};
+    TBindings StaticResCounter      = {};
     Uint16    StaticInlineConstants = 0;
 
     // First pass: count inline constant buffers
