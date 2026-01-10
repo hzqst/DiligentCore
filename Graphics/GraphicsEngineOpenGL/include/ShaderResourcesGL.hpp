@@ -164,14 +164,6 @@ public:
 
         const GLuint UBIndex;
         const Uint32 BufferSize; // Buffer size in bytes
-
-        /// Returns the number of 32-bit constants in the buffer.
-        /// This is used for inline constants where ArraySize represents
-        /// the number of constants, not the UBO array size.
-        Uint32 GetInlineConstantCount() const
-        {
-            return BufferSize / sizeof(Uint32);
-        }
     };
     static_assert((sizeof(UniformBufferInfo) % sizeof(void*)) == 0, "sizeof(UniformBufferInfo) must be multiple of sizeof(void*)");
 

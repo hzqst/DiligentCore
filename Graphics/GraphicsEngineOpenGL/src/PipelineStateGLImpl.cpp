@@ -144,7 +144,7 @@ PipelineResourceSignatureDescWrapper PipelineStateGLImpl::GetDefaultSignatureDes
             if (Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
             {
                 VERIFY(Flags == PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS, "INLINE_CONSTANTS flag cannot be combined with other flags.");
-                ArraySize = UB.GetInlineConstantCount();
+                ArraySize = UB.BufferSize / sizeof(Uint32);
 
                 if (ArraySize > MAX_INLINE_CONSTANTS)
                 {
