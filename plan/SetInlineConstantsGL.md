@@ -553,7 +553,7 @@ This mirrors the D3D11 approach which uses `ProcessInlineCBs` to filter inline c
    - This enables the inline constants test suite for OpenGL backend in addition to D3D and Vulkan
    - All existing tests (ResourceLayout, ComputeResourceLayout, ResourceSignature, TwoResourceSignatures, RenderStateCache) will now run for OpenGL
 
-### 8.5) Bug Fix: Re-bind inline constant buffers after update when using compatible SRB
+### 8.5) Design Fix: Update buffer from SRB cache (D3D11 parity)
 
 **Files**
 - `Graphics/GraphicsEngineOpenGL/include/PipelineResourceSignatureGLImpl.hpp`
@@ -566,32 +566,53 @@ In `TEST_F(InlineConstants, RenderStateCache)`, the second call to `VerifyPSOFro
 **Root Cause**
 When an SRB created from one signature (`pRefPSO`) is used with a different but compatible signature (`pPSO`):
 1. `BindResources()` binds UBOs from the SRB's cache, which stores pointers to `pRefPSO`'s signature's shared inline constant buffers
-2. `UpdateInlineConstantBuffers()` uploads staging data to `pPSO`'s signature's shared inline constant buffers
+2. The original implementation updated `InlineCBAttr.pBuffer` (current signature's buffer), not the buffer in the SRB cache
 3. The GL binding slots have `pRefPSO`'s buffers bound, but the data was uploaded to `pPSO`'s buffers
 4. Shaders read from the bound buffers (`pRefPSO`'s), which contain zeros/stale data
 
-**Fix**
-Modified `UpdateInlineConstantBuffers()` to:
-1. Accept a `const TBindings& BaseBindings` parameter to know the GL binding points
-2. After uploading data to each inline constant buffer, re-bind the signature's shared buffer to the correct GL slot
+**Initial Workaround (Removed)**
+The initial fix added a re-bind step after updating the buffer:
+```cpp
+// After Map/Unmap of InlineCBAttr.pBuffer:
+CtxState.BindUniformBuffer(BaseUBOBinding + CacheOffset, InlineCBAttr.pBuffer->GetGLHandle(), ...);
+```
+This worked but was inconsistent with D3D11's design.
 
-This ensures that even when an SRB from a compatible but different signature is used, the current signature's shared buffers (which now contain the updated data) are properly bound.
+**Final Fix: D3D11 Parity**
+Modified `UpdateInlineConstantBuffers()` to get the buffer from SRB cache instead of using the signature's `InlineCBAttr.pBuffer`:
+
+```cpp
+// Get buffer from SRB cache (same buffer that was bound by BindResources)
+BufferGLImpl* pBuffer = InlineCB.pBuffer;
+
+// Update the buffer from cache - no re-binding needed
+pBuffer->Map(CtxState, MAP_WRITE, MAP_FLAG_DISCARD, pMappedData);
+memcpy(pMappedData, InlineCB.pInlineConstantData, BufferSize);
+pBuffer->Unmap(CtxState);
+```
+
+This follows D3D11's design principle: **the buffer that is bound should be the same buffer that is updated**.
 
 **Changes Made**
-1. **Updated function signature** (`PipelineResourceSignatureGLImpl.hpp:149-151`):
-   - Added `const TBindings& BaseBindings` parameter
+1. **Updated function signature** (`PipelineResourceSignatureGLImpl.hpp`):
+   - Removed `const TBindings& BaseBindings` parameter (no longer needed)
 
-2. **Updated implementation** (`PipelineResourceSignatureGLImpl.cpp:608-642`):
-   - After `Unmap()`, call `BufferMemoryBarrier()` and `BindUniformBuffer()` to re-bind the buffer
-   - Binding point is calculated as `BaseBindings[BINDING_RANGE_UNIFORM_BUFFER] + CacheOffset`
+2. **Updated implementation** (`PipelineResourceSignatureGLImpl.cpp`):
+   - Changed from `InlineCBAttr.pBuffer->Map(...)` to `InlineCB.pBuffer->Map(...)`
+   - Removed the re-bind code after Unmap
 
-3. **Updated call site** (`DeviceContextGLImpl.cpp:759`):
-   - Pass `BaseBindings` to `UpdateInlineConstantBuffers()`
+3. **Updated call site** (`DeviceContextGLImpl.cpp`):
+   - Removed `BaseBindings` argument from `UpdateInlineConstantBuffers()` call
 
 **Status: COMPLETED**
 
-**CRITICAL for future backend implementations:**
-In OpenGL, each signature creates its own shared inline constant buffers. When an SRB from a compatible but different signature is used, the SRB's cache contains buffer pointers to the original signature's buffers. After updating inline constants, the current signature's buffers must be explicitly bound to override the previously bound buffers.
+**Design Principle**
+The buffer that is bound should be the same buffer that is updated:
+- `BindResources()` binds buffers from SRB cache
+- `UpdateInlineConstantBuffers()` updates buffers from SRB cache
+- The signature's `InlineCBAttr.pBuffer` is only used during SRB initialization to populate the cache
+
+**Note**: Vulkan has the same issue but uses `InlineCBAttr.pBuffer` (signature's buffer) instead of the buffer from cache. See `plan/SetInlineConstants_InconsistencyCommit.md` for details.
 
 ### 8.6) Fix: buffer block with binding 0 has mismatching definitions (RenderStateCache test)
 
@@ -654,5 +675,5 @@ When `separate_shader_objects` is disabled, force GLSL codegen to avoid emitting
 9. **Step 6**: Add commit path in `DeviceContextGLImpl` (graphics + compute)
 10. **Step 7**: Implement static inline constants copy
 11. **Step 8**: Enable tests
-12. **Step 8.5**: Bug fix - Re-bind inline constant buffers after update when using compatible SRB
+12. **Step 8.5**: Design fix - Update buffer from SRB cache (D3D11 parity)
 13. **Step 8.6**: Fix - buffer block with binding 0 has mismatching definitions (RenderStateCache test)
