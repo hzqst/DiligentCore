@@ -147,8 +147,7 @@ public:
     // the signature's shared buffers are used even when an SRB from a compatible
     // but different signature is used.
     void UpdateInlineConstantBuffers(const ShaderResourceCacheGL& ResourceCache,
-                                     class GLContextState&        CtxState,
-                                     const TBindings&             BaseBindings) const;
+                                     class GLContextState&        CtxState) const;;
 
     Uint32 GetImmutableSamplerIdx(const ResourceAttribs& Res) const
     {

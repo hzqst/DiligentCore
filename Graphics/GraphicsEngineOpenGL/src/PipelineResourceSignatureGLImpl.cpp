@@ -598,38 +598,31 @@ void PipelineResourceSignatureGLImpl::CopyStaticResources(ShaderResourceCacheGL&
 }
 
 void PipelineResourceSignatureGLImpl::UpdateInlineConstantBuffers(const ShaderResourceCacheGL& ResourceCache,
-                                                                  GLContextState&              CtxState,
-                                                                  const TBindings&             BaseBindings) const
+                                                                  GLContextState&              CtxState) const
 {
-    const Uint16 BaseUBOBinding = BaseBindings[BINDING_RANGE_UNIFORM_BUFFER];
-
     for (Uint32 i = 0; i < m_NumInlineConstantBuffers; ++i)
     {
         const InlineConstantBufferAttribsGL& InlineCBAttr = GetInlineConstantBuffer(i);
-        VERIFY_EXPR(InlineCBAttr.pBuffer);
 
         const ShaderResourceCacheGL::CachedUB& InlineCB = ResourceCache.GetConstUB(InlineCBAttr.CacheOffset);
         VERIFY(InlineCBAttr.NumConstants * sizeof(Uint32) == InlineCB.RangeSize, "Inline constant buffer size mismatch");
         VERIFY(InlineCB.pInlineConstantData != nullptr, "Inline constant data pointer is null");
+        VERIFY(InlineCB.pBuffer, "Inline constant buffer is null in cache");
 
         const Uint32 BufferSize = InlineCBAttr.NumConstants * sizeof(Uint32);
 
-        // Map the shared buffer and copy the data
-        PVoid pMappedData = nullptr;
-        InlineCBAttr.pBuffer->Map(CtxState, MAP_WRITE, MAP_FLAG_DISCARD, pMappedData);
-        memcpy(pMappedData, InlineCB.pInlineConstantData, BufferSize);
-        InlineCBAttr.pBuffer->Unmap(CtxState);
+        // Get the buffer from the SRB cache (not from the signature's InlineCBAttr.pBuffer).
+        // This ensures we update the same buffer that was bound by BindResources().
+        // When an SRB created from a compatible but different signature is used,
+        // the SRB's cache contains buffer pointers to the original signature's shared buffers.
+        // By updating the buffer from cache, we maintain consistency with D3D11's design.
+        BufferGLImpl* pBuffer = InlineCB.pBuffer;
 
-        // Re-bind the signature's shared inline constant buffer to the GL slot.
-        // This is necessary because when an SRB created from a compatible but different
-        // signature is used, the SRB's cache contains buffer pointers to the original
-        // signature's shared buffers. BindResources() binds those buffers, but we need
-        // to bind *this* signature's shared buffers which now contain the updated data.
-        InlineCBAttr.pBuffer->BufferMemoryBarrier(MEMORY_BARRIER_UNIFORM_BUFFER, CtxState);
-        CtxState.BindUniformBuffer(BaseUBOBinding + InlineCBAttr.CacheOffset,
-                                   InlineCBAttr.pBuffer->GetGLHandle(),
-                                   0, // BaseOffset
-                                   BufferSize);
+        // Map the buffer and copy the staging data
+        PVoid pMappedData = nullptr;
+        pBuffer->Map(CtxState, MAP_WRITE, MAP_FLAG_DISCARD, pMappedData);
+        memcpy(pMappedData, InlineCB.pInlineConstantData, BufferSize);
+        pBuffer->Unmap(CtxState);
     }
 }
 
