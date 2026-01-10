@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch:*)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(dir:*)",
+      "Bash(cmd /c \"cd /d d:\\\\DiligentCore-hzqst\\\\Tests\\\\IncludeTest && cd ..\\\\..\\\\.. && echo %CD%\")",
+      "Bash(git rev-parse:*)",
+      "Bash(grep:*)",
+      "mcp__plugin_serena_serena__check_onboarding_performed",
+      "mcp__plugin_serena_serena__activate_project",
+      "mcp__plugin_serena_serena__list_memories",
+      "mcp__plugin_serena_serena__get_symbols_overview",
+      "mcp__plugin_serena_serena__find_symbol",
+      "mcp__plugin_serena_serena__search_for_pattern",
+      "mcp__plugin_serena_serena__read_file",
+      "mcp__plugin_serena_serena__think_about_collected_information",
+      "mcp__plugin_serena_serena__replace_content",
+      "mcp__plugin_serena_serena__create_text_file",
+      "mcp__plugin_serena_serena__find_file",
+      "mcp__plugin_serena_serena__think_about_whether_you_are_done",
+      "Bash(clang-format:*)",
+      "Bash(where:*)",
+      "mcp__plugin_serena_serena__think_about_task_adherence",
+      "Bash(\"C:\\\\Program Files\\\\Microsoft Visual Studio\\\\2022\\\\Community\\\\VC\\\\Tools\\\\Llvm\\\\x64\\\\bin\\\\clang-format.exe\" -i \"d:\\\\DiligentCore\\\\Graphics\\\\GraphicsEngineOpenGL\\\\include\\\\ShaderResourceCacheGL.hpp\" \"d:\\\\DiligentCore\\\\Graphics\\\\GraphicsEngineOpenGL\\\\src\\\\PipelineResourceSignatureGLImpl.cpp\")",
+      "mcp__plugin_serena_serena__replace_symbol_body"
+    ]
+  }
+}
