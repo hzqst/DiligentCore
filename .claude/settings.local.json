@@ -27,7 +27,8 @@
       "Bash(\"C:\\\\Program Files\\\\Microsoft Visual Studio\\\\2022\\\\Community\\\\VC\\\\Tools\\\\Llvm\\\\x64\\\\bin\\\\clang-format.exe\" -i \"d:\\\\DiligentCore\\\\Graphics\\\\GraphicsEngineOpenGL\\\\include\\\\ShaderResourceCacheGL.hpp\" \"d:\\\\DiligentCore\\\\Graphics\\\\GraphicsEngineOpenGL\\\\src\\\\PipelineResourceSignatureGLImpl.cpp\")",
       "mcp__plugin_serena_serena__replace_symbol_body",
       "Bash(BuildToolsFormatValidationvalidate_format_win.bat)",
-      "Bash(cmd /c \"BuildTools\\\\FormatValidation\\\\validate_format_win.bat\")"
+      "Bash(cmd /c \"BuildTools\\\\FormatValidation\\\\validate_format_win.bat\")",
+      "Bash(cmd /c \"cd /d D:\\\\DiligentCore && BuildTools\\\\FormatValidation\\\\validate_format_win.bat\")"
     ]
   }
 }
