@@ -145,11 +145,7 @@ PipelineResourceSignatureDescWrapper PipelineStateGLImpl::GetDefaultSignatureDes
             {
                 VERIFY(Flags == PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS, "INLINE_CONSTANTS flag cannot be combined with other flags.");
                 ArraySize = UB.GetInlineConstantCount();
-                if (ArraySize == 0)
-                {
-                    LOG_ERROR_AND_THROW("Inline constants resource '", UB.Name, "' has zero buffer size. "
-                                                                                "Make sure the shader was compiled with constant buffer reflection enabled.");
-                }
+
                 if (ArraySize > MAX_INLINE_CONSTANTS)
                 {
                     LOG_ERROR_AND_THROW("Inline constants resource '", UB.Name, "' has ",
