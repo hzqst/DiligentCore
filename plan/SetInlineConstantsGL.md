@@ -46,11 +46,9 @@
   - `Uint32 m_NumInlineConstantBuffers` - Number of inline constant buffers
   - `Uint16 m_TotalInlineConstants` - Total number of 32-bit constants
   - `std::unique_ptr<InlineConstantBufferAttribsGL[]> m_InlineConstantBuffers` - Inline constant buffer attributes array
-- Added public methods:
-  - `bool HasInlineConstants() const` - Returns true if signature has inline constants
-  - `Uint32 GetNumInlineConstantBuffers() const` - Returns number of inline constant buffers
-  - `Uint16 GetTotalInlineConstants() const` - Returns total inline constants count
-  - `const InlineConstantBufferAttribsGL& GetInlineConstantBuffer(Uint32 Index) const` - Accessor for inline constant buffer attributes
+- Note (follow-up refactors):
+  - The helper accessors that were initially added here were later removed or made private (`a0d3a1642`, `1fd65e4cb`) because they were unused outside `PipelineResourceSignatureGLImpl`.
+  - No public API surface change remains; inline-constant metadata is internal to the OpenGL backend.
 
 ### 1.5) Fix ArraySize in GetDefaultSignatureDesc for inline constants
 
@@ -75,7 +73,6 @@ Inline constant range (0 .. 23) is out of bounds for variable 'cbInlinePositions
 **Changes**
 1. **Add `BufferSize` to `UniformBufferInfo`** (`ShaderResourcesGL.hpp`):
    - Add `Uint32 BufferSize` member to store the uniform block data size
-   - Add `Uint32 GetInlineConstantCount() const` method that returns `BufferSize / sizeof(Uint32)`
 
 2. **Populate `BufferSize` during shader loading** (`ShaderResourcesGL.cpp`):
    - In `LoadUniforms()`, call `glGetActiveUniformBlockiv(GLProgram, UniformBlockIndex, GL_UNIFORM_BLOCK_DATA_SIZE, &BufferSize)`
@@ -84,8 +81,9 @@ Inline constant range (0 .. 23) is out of bounds for variable 'cbInlinePositions
 3. **Use constant count for inline constants** (`PipelineStateGLImpl.cpp`):
    - Create specialized `HandleUniformBuffer` handler in `GetDefaultSignatureDesc()`
    - When `PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS` is set:
-     - Use `UB.GetInlineConstantCount()` instead of `UB.ArraySize`
-     - Validate that the count is non-zero and does not exceed `MAX_INLINE_CONSTANTS`
+     - Use `UB.BufferSize / sizeof(Uint32)` instead of `UB.ArraySize`
+     - Validate that the count does not exceed `MAX_INLINE_CONSTANTS`
+     - **Note**: Do not throw on zero count (this was an impossible/incorrect error path and was removed in `a88608813`)
 
 **Reference (D3D11)**
 - `Graphics/GraphicsEngineD3D11/src/PipelineStateD3D11Impl.cpp:212` (`HandleCB` with `GetInlineConstantCountOrThrow()`)
@@ -94,19 +92,18 @@ Inline constant range (0 .. 23) is out of bounds for variable 'cbInlinePositions
 **Status: COMPLETED**
 
 **Changes Made**
-1. **Added `BufferSize` field to `UniformBufferInfo`** (`ShaderResourcesGL.hpp:76`):
+1. **Added `BufferSize` field to `UniformBufferInfo`** (`ShaderResourcesGL.hpp`):
    - Added `const Uint32 BufferSize` member
    - Updated both constructors to accept and initialize `BufferSize`
-   - Added `GetInlineConstantCount()` method
 
-2. **Populated `BufferSize` during loading** (`ShaderResourcesGL.cpp:230-232`):
-   - Added `glGetActiveUniformBlockiv` call with `GL_UNIFORM_BLOCK_DATA_SIZE`
-   - Passed buffer size to `UniformBufferInfo` constructor
+2. **Populated `BufferSize` during loading** (`ShaderResourcesGL.cpp`):
+    - Added `glGetActiveUniformBlockiv` call with `GL_UNIFORM_BLOCK_DATA_SIZE`
+    - Passed buffer size to `UniformBufferInfo` constructor
 
-3. **Created specialized handler** (`PipelineStateGLImpl.cpp:337-374`):
-   - Added `HandleUniformBuffer` lambda that checks for `PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS`
-   - For inline constants: uses `GetInlineConstantCount()` for `ArraySize`
-   - Updated `ProcessConstResources` calls to use the specialized handler for UBs
+3. **Created specialized handler** (`PipelineStateGLImpl.cpp`):
+    - Added `HandleUniformBuffer` lambda that checks for `PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS`
+    - For inline constants: uses `UB.BufferSize / sizeof(Uint32)` for `ArraySize`
+    - Updated `ProcessConstResources` calls to use the specialized handler for UBs
 
 4. **Updated copyright years** in all modified files
 
@@ -215,7 +212,7 @@ The current code has bugs that will cause incorrect behavior for inline constant
 - Update memory layout to include `InlineConstantData` tail:
   - `GetRequiredMemorySize(ResCount, TotalInlineConstants)`
 - Add helpers:
-  - `InitInlineConstantBuffer(CacheOffset, pBuffer, NumConstants, pInlineData)`
+  - `InitInlineConstantBuffer(CacheOffset, pBuffer, NumConstants, InlineConstantOffset)`
   - `SetInlineConstants(CacheOffset, pConstants, First, Num)`
   - `CopyInlineConstants(SrcCache, CacheOffset, NumConstants)`
 
@@ -373,21 +370,20 @@ When adding inline constants support to a new backend, ensure the SRB memory siz
 **Status: COMPLETED**
 
 **Changes Made**
-1. **Added `GetInlineConstantDataPtr()` method** (`ShaderResourceCacheGL.hpp:367-374`):
-   - Returns pointer to inline constant data at given offset (in number of 32-bit constants)
-   - Data is stored at tail of resource cache memory, after `m_MemoryEndOffset`
-
-2. **Updated `InitSRBResourceCache()`** (`PipelineResourceSignatureGLImpl.cpp:555-605`):
+1. **Updated `InitSRBResourceCache()`** (`PipelineResourceSignatureGLImpl.cpp:555-605`):
    - Pass `m_TotalInlineConstants` to `ResourceCache.Initialize()`
    - For each `InlineConstantBufferAttribsGL`:
-     - Calculate pointer to inline constant data in the cache memory tail
-     - Call `ResourceCache.InitInlineConstantBuffer()` to bind shared UBO and set staging pointer
+     - Track `InlineConstantOffset` (in number of 32-bit constants) into the cache memory tail
+     - Call `ResourceCache.InitInlineConstantBuffer()` to bind the shared UBO and set staging pointer
    - Added verification that total inline constants match expected count
 
-3. **Updated static cache initialization in `CreateLayout()`** (`PipelineResourceSignatureGLImpl.cpp:242-269`):
-   - Pass `m_TotalInlineConstants` to `m_pStaticResCache->Initialize()`
+2. **Updated static cache initialization in `CreateLayout()`** (`PipelineResourceSignatureGLImpl.cpp:242-269`):
+   - Pass `StaticInlineConstants` (not `m_TotalInlineConstants`) to `m_pStaticResCache->Initialize()`
    - For each inline constant buffer, call `InitInlineConstantBuffer()` on static cache
    - This allows static inline constants to be set on the signature and later copied to SRBs
+
+3. **Follow-up cleanup**:
+   - Removed `GetInlineConstantDataPtr()` and changed `InitInlineConstantBuffer()` to take an `InlineConstantOffset` instead (`ce39a5188` -> `0b3f2d05c`)
 
 ### 4.5) Bug Fix: Only initialize static inline constants in static cache
 
@@ -402,9 +398,9 @@ Uniform buffer index (1) is out of range
 The static cache was being initialized with ALL inline constant buffers (`m_TotalInlineConstants`), including mutable and dynamic ones. However, the static cache only has space for static resources (`StaticResCounter`). When the code tried to call `InitInlineConstantBuffer` for a mutable inline constant buffer, it accessed a CacheOffset that was out of range for the static cache.
 
 **Fix** (`PipelineResourceSignatureGLImpl.cpp:244-288`)
-1. Calculate `StaticInlineConstants` by only counting inline constant buffers where `CacheOffset < StaticResCounter[BINDING_RANGE_UNIFORM_BUFFER]`
-2. Pass `StaticInlineConstants` instead of `m_TotalInlineConstants` to `m_pStaticResCache->Initialize()`
-3. Only call `InitInlineConstantBuffer()` for inline constant buffers that are within the static cache range
+1. Track `StaticInlineConstants` and use it (instead of `m_TotalInlineConstants`) when initializing the static cache
+2. Only initialize static inline constant buffers in the signature cache
+3. Follow-up refactor: compute `StaticInlineConstants` in the main `CreateLayout()` loop (based on variable type) instead of doing a second pass over inline constant buffers (`02d5860f1`)
 
 This mirrors the D3D11 approach which uses `ProcessInlineCBs` to filter inline constant buffers based on whether their binding is within the cache's resource count.
 
