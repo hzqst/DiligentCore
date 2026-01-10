@@ -106,7 +106,8 @@ PipelineResourceSignatureGLImpl::PipelineResourceSignatureGLImpl(IReferenceCount
 
 void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
 {
-    TBindings StaticResCounter = {};
+    TBindings StaticResCounter    = {};
+    Uint16    StaticInlineConstants = 0;
 
     // First pass: count inline constant buffers
     for (Uint32 i = 0; i < m_Desc.NumResources; ++i)
@@ -226,6 +227,11 @@ void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
                 InlineCBAttribs.pBuffer = CreateInlineConstantBuffer(ResDesc.Name, ResDesc.ArraySize);
 
                 m_TotalInlineConstants += static_cast<Uint16>(ResDesc.ArraySize);
+
+                if (ResDesc.VarType == SHADER_RESOURCE_VARIABLE_TYPE_STATIC)
+                {
+                    StaticInlineConstants += static_cast<Uint16>(ResDesc.ArraySize);
+                }
             }
 
             VERIFY(CacheOffset + ArraySize <= std::numeric_limits<TBindings::value_type>::max(), "Cache offset exceeds representable range");
@@ -243,18 +249,6 @@ void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
 
     if (m_pStaticResCache)
     {
-        // Calculate the total number of static inline constants.
-        // Only inline constant buffers with CacheOffset < StaticResCounter are static.
-        Uint16 StaticInlineConstants = 0;
-        for (Uint32 i = 0; i < m_NumInlineConstantBuffers; ++i)
-        {
-            const InlineConstantBufferAttribsGL& InlineCBAttr = GetInlineConstantBuffer(i);
-            if (InlineCBAttr.CacheOffset < StaticResCounter[BINDING_RANGE_UNIFORM_BUFFER])
-            {
-                StaticInlineConstants += static_cast<Uint16>(InlineCBAttr.NumConstants);
-            }
-        }
-
         m_pStaticResCache->Initialize(StaticResCounter, GetRawAllocator(), 0x0, 0x0, StaticInlineConstants);
 
         // Initialize inline constant buffers in the static cache.
