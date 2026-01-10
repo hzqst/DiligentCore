@@ -150,12 +150,6 @@ public:
                                      class GLContextState&        CtxState,
                                      const TBindings&             BaseBindings) const;
 
-    const InlineConstantBufferAttribsGL& GetInlineConstantBuffer(Uint32 Index) const
-    {
-        VERIFY_EXPR(Index < m_NumInlineConstantBuffers);
-        return m_InlineConstantBuffers[Index];
-    }
-
     Uint32 GetImmutableSamplerIdx(const ResourceAttribs& Res) const
     {
         Uint32 ImtblSamIdx = InvalidImmutableSamplerIndex;
@@ -175,6 +169,12 @@ public:
 private:
     void CreateLayout(bool IsSerialized);
 
+    const InlineConstantBufferAttribsGL& GetInlineConstantBuffer(Uint32 Index) const
+    {
+        VERIFY_EXPR(Index < m_NumInlineConstantBuffers);
+        return m_InlineConstantBuffers[Index];
+    }
+    
 private:
     TBindings m_BindingCount = {};
 
