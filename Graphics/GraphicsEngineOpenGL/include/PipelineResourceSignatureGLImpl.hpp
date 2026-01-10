@@ -150,14 +150,6 @@ public:
                                      class GLContextState&        CtxState,
                                      const TBindings&             BaseBindings) const;
 
-    bool HasInlineConstants() const
-    {
-        return m_NumInlineConstantBuffers != 0;
-    }
-
-    Uint32 GetNumInlineConstantBuffers() const { return m_NumInlineConstantBuffers; }
-    Uint16 GetTotalInlineConstants() const { return m_TotalInlineConstants; }
-
     const InlineConstantBufferAttribsGL& GetInlineConstantBuffer(Uint32 Index) const
     {
         VERIFY_EXPR(Index < m_NumInlineConstantBuffers);
