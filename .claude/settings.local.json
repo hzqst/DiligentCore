@@ -28,7 +28,8 @@
       "mcp__plugin_serena_serena__replace_symbol_body",
       "Bash(BuildToolsFormatValidationvalidate_format_win.bat)",
       "Bash(cmd /c \"BuildTools\\\\FormatValidation\\\\validate_format_win.bat\")",
-      "Bash(cmd /c \"cd /d D:\\\\DiligentCore && BuildTools\\\\FormatValidation\\\\validate_format_win.bat\")"
+      "Bash(cmd /c \"cd /d D:\\\\DiligentCore && BuildTools\\\\FormatValidation\\\\validate_format_win.bat\")",
+      "Bash(cmd /c \"cd /d d:\\\\DiligentCore && BuildTools\\\\FormatValidation\\\\validate_format_win.bat\")"
     ]
   }
 }
