@@ -89,6 +89,18 @@ Common scenario: `RenderStateCache` test where PSOs are serialized/deserialized,
 
 Modify `PipelineResourceSignatureVkImpl::CommitInlineConstants()` to update the buffer stored in the SRB cache instead of the signature's `InlineCBAttr.pBuffer`:
 
+Before:
+```cpp
+VERIFY_EXPR(InlineCBAttr.pBuffer);
+
+// Map the shared buffer and copy the data (shared within Signature level)
+void* pMappedData = nullptr;
+Attribs.Ctx.MapBuffer(InlineCBAttr.pBuffer, MAP_WRITE, MAP_FLAG_DISCARD, pMappedData);
+memcpy(pMappedData, pInlineConstantData, DataSize);
+Attribs.Ctx.UnmapBuffer(InlineCBAttr.pBuffer, MAP_WRITE);
+```
+
+After:
 ```cpp
 // Get buffer from SRB cache
 const ShaderResourceCacheVk::Resource& CachedRes = 
@@ -96,7 +108,7 @@ const ShaderResourceCacheVk::Resource& CachedRes =
                  .GetResource(InlineCBAttr.SRBCacheOffset);
 BufferVkImpl* pBuffer = CachedRes.pObject.RawPtr<BufferVkImpl>();
 
-// Update the buffer from cache
+// Update the buffer from SRB cache
 Attribs.Ctx.MapBuffer(pBuffer, MAP_WRITE, MAP_FLAG_DISCARD, pMappedData);
 memcpy(pMappedData, pInlineConstantData, DataSize);
 Attribs.Ctx.UnmapBuffer(pBuffer, MAP_WRITE);
