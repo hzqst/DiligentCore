@@ -4,7 +4,7 @@
 
 Inline constants (also known as push constants in Vulkan or root constants in Direct3D12) provide an efficient way to pass small, frequently-updated data directly from the CPU to shaders without creating buffers or modifying descriptor sets.
 
-This document describes the implementation of `SetInlineConstants` API in DiligentCore for D3D12 and Vulkan backends.
+This document describes the implementation of `SetInlineConstants` API in DiligentCore for D3D12, D3D11, and Vulkan backends. Some design notes (e.g. the buffer-emulated update path) also apply to OpenGL's UBO-emulated implementation.
 
 ## API Usage
 
@@ -566,6 +566,15 @@ void PipelineResourceSignatureD3D11Impl::UpdateInlineConstantBuffers(
     }
 }
 ```
+
+### Design Note: Always update the buffer that is bound
+
+For buffer-emulated inline constants (D3D11, Vulkan UBO-emulation path, OpenGL UBO-emulation path), the commit/update step must update the *same buffer object that is currently bound* (i.e., the buffer pointer stored in the SRB resource cache), not a buffer pointer stored in the signature metadata.
+
+This matters when an SRB created from one signature is used with a different-but-compatible signature/PSO (common in cache/reuse scenarios):
+
+- **Previous (broken) approach (OpenGL, fixed in `ef1e2df5c`)**: `UpdateInlineConstantBuffers()` updated the signature-owned shared buffer (e.g. `InlineCBAttr.pBuffer`) and then attempted to "fix" it by re-binding the signature buffer to the slot. This could still fail because `BindResources()` had already bound the buffers referenced by the SRB cache (which may point to the original signature's shared buffers), so the data upload went to a different buffer than the one actually bound.
+- **Correct approach (current OpenGL implementation, `ef1e2df5c`)**: fetch the buffer from the SRB cache (e.g. `InlineCB.pBuffer`) and update it. No re-bind is needed because the upload target and the bound buffer are guaranteed to be the same object.
 
 ### Multiple Inline Constants Support
 
