@@ -302,9 +302,15 @@ public:
     template <bool VerifyOnly>
     void TransitionResources(DeviceContextVkImpl* pCtxVkImpl);
 
-    Uint32 GetDynamicBufferOffsets(DeviceContextVkImpl*   pCtx,
-                                   std::vector<uint32_t>& Offsets,
-                                   Uint32                 StartInd) const;
+    struct WriteDynamicBufferOffsetsResult
+    {
+        Uint32 NumOffsetsWritten = 0;
+        Uint32 NumOffsetsChanged = 0;
+    };
+    WriteDynamicBufferOffsetsResult WriteDynamicBufferOffsets(
+        DeviceContextVkImpl*   pCtx,
+        std::vector<uint32_t>& Offsets,
+        Uint32                 StartInd) const;
 
 private:
     Resource* GetFirstResourcePtr()
@@ -334,7 +340,8 @@ private:
     Uint16 m_NumSets = 0;
 
     // Total actual number of dynamic buffers (that were created with USAGE_DYNAMIC) bound in the resource cache
-    // regardless of the variable type. Note this variable is not equal to dynamic offsets count, which is constant.
+    // regardless of the variable type (including inline constant buffers).
+    // Note this variable is not equal to dynamic offsets count, which is constant.
     Uint16 m_NumDynamicBuffers = 0;
     Uint32 m_TotalResources : 30;
 

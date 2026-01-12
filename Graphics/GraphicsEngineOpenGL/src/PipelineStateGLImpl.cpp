@@ -139,11 +139,11 @@ PipelineResourceSignatureDescWrapper PipelineStateGLImpl::GetDefaultSignatureDes
         {
             const PIPELINE_RESOURCE_FLAGS Flags = UB.ResourceFlags | ShaderVariableFlagsToPipelineResourceFlags(VarDesc.Flags);
 
-            // For inline constants, use the constant count instead of the UBO array size
             Uint32 ArraySize = UB.ArraySize;
             if (Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
             {
                 VERIFY(Flags == PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS, "INLINE_CONSTANTS flag cannot be combined with other flags.");
+                // For inline constants, use the constant count instead of the UBO array size
                 ArraySize = UB.BufferSize / sizeof(Uint32);
 
                 if (ArraySize > MAX_INLINE_CONSTANTS)

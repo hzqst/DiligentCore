@@ -837,12 +837,7 @@ void ShaderResourcesGL::LoadUniforms(const LoadUniformsAttribs& Attribs)
             if (UB.UBIndex < UniformVars.size())
             {
                 auto& Vars = UniformVars[UB.UBIndex];
-
-                GLint BufferSize = 0;
-                glGetActiveUniformBlockiv(GLProgram, UB.UBIndex, GL_UNIFORM_BLOCK_DATA_SIZE, &BufferSize);
-                DEV_CHECK_GL_ERROR("Failed to get the value of the GL_UNIFORM_BLOCK_DATA_SIZE parameter");
-
-                UBReflections.emplace_back(PrepareUBReflection(std::move(Vars), StaticCast<Uint32>(BufferSize)));
+                UBReflections.emplace_back(PrepareUBReflection(std::move(Vars), UB.BufferSize));
             }
             else
             {

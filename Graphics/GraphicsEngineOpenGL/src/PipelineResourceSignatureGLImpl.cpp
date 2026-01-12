@@ -106,10 +106,7 @@ PipelineResourceSignatureGLImpl::PipelineResourceSignatureGLImpl(IReferenceCount
 
 void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
 {
-    TBindings StaticResCounter      = {};
-    Uint16    StaticInlineConstants = 0;
-
-    // First pass: count inline constant buffers
+    // Count inline constant buffers
     for (Uint32 i = 0; i < m_Desc.NumResources; ++i)
     {
         const PipelineResourceDesc& ResDesc = m_Desc.Resources[i];
@@ -125,7 +122,9 @@ void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
         m_InlineConstantBuffers = std::make_unique<InlineConstantBufferAttribsGL[]>(m_NumInlineConstantBuffers);
     }
 
-    Uint32 InlineConstantBufferIdx = 0;
+    TBindings StaticResCounter         = {};
+    Uint16    NumStaticInlineConstants = 0;
+    Uint32    InlineConstantBufferIdx  = 0;
     for (Uint32 i = 0; i < m_Desc.NumResources; ++i)
     {
         const PipelineResourceDesc& ResDesc = m_Desc.Resources[i];
@@ -230,7 +229,7 @@ void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
 
                 if (ResDesc.VarType == SHADER_RESOURCE_VARIABLE_TYPE_STATIC)
                 {
-                    StaticInlineConstants += static_cast<Uint16>(ResDesc.ArraySize);
+                    NumStaticInlineConstants += static_cast<Uint16>(ResDesc.ArraySize);
                 }
             }
 
@@ -249,7 +248,7 @@ void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
 
     if (m_pStaticResCache)
     {
-        m_pStaticResCache->Initialize(StaticResCounter, GetRawAllocator(), 0x0, 0x0, StaticInlineConstants);
+        m_pStaticResCache->Initialize(StaticResCounter, GetRawAllocator(), 0x0, 0x0, NumStaticInlineConstants);
 
         // Initialize inline constant buffers in the static cache.
         // This allows static inline constants to be set on the signature and later copied to SRBs.
@@ -275,8 +274,11 @@ void PipelineResourceSignatureGLImpl::CreateLayout(const bool IsSerialized)
                     InlineConstantOffset += InlineCBAttr.NumConstants;
                 }
             }
-            VERIFY_EXPR(InlineConstantOffset == StaticInlineConstants);
+            VERIFY_EXPR(InlineConstantOffset == NumStaticInlineConstants);
         }
+#ifdef DILIGENT_DEBUG
+        m_pStaticResCache->DbgVerifyResourceInitialization();
+#endif
     }
 }
 
@@ -653,6 +655,9 @@ void PipelineResourceSignatureGLImpl::InitSRBResourceCache(ShaderResourceCacheGL
         }
         VERIFY_EXPR(InlineConstantOffset == m_TotalInlineConstants);
     }
+#ifdef DILIGENT_DEBUG
+    ResourceCache.DbgVerifyResourceInitialization();
+#endif
 
     // Initialize immutable samplers
     for (Uint32 r = 0; r < m_Desc.NumResources; ++r)

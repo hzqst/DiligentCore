@@ -148,7 +148,7 @@ public:
                           SHADER_RESOURCE_TYPE  _ResourceType,
                           Uint32                _ArraySize,
                           GLuint                _UBIndex,
-                          Uint32                _BufferSize = 0)noexcept :
+                          Uint32                _BufferSize)noexcept :
             GLResourceAttribs{_Name, _ShaderStages, _ResourceType, PIPELINE_RESOURCE_FLAG_NONE, _ArraySize},
             UBIndex          {_UBIndex},
             BufferSize       {_BufferSize}
@@ -157,8 +157,8 @@ public:
         UniformBufferInfo(const UniformBufferInfo& UB,
                           StringPool&              NamesPool)noexcept :
             GLResourceAttribs{UB, NamesPool},
-            UBIndex          {UB.UBIndex    },
-            BufferSize       {UB.BufferSize }
+            UBIndex          {UB.UBIndex   },
+            BufferSize       {UB.BufferSize}
         {}
         // clang-format on
 

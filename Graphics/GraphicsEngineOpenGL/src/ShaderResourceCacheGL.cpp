@@ -59,6 +59,9 @@ void ShaderResourceCacheGL::Initialize(const TResourceCount& ResCount, IMemoryAl
     m_DynamicUBOSlotMask  = DynamicUBOSlotMask;
     m_DynamicSSBOSlotMask = DynamicSSBOSlotMask;
     m_HasInlineConstants  = (TotalInlineConstants > 0);
+#ifdef DILIGENT_DEBUG
+    m_DbgAssignedInlineConstants.resize(TotalInlineConstants);
+#endif
 
     VERIFY(!m_pResourceData, "Cache has already been initialized");
 
@@ -342,6 +345,55 @@ void ShaderResourceCacheGL::BindDynamicBuffers(GLContextState&              GLSt
     }
 }
 
+void ShaderResourceCacheGL::InitInlineConstantBuffer(Uint32                      CacheOffset,
+                                                     RefCntAutoPtr<BufferGLImpl> pBuffer,
+                                                     Uint32                      NumConstants,
+                                                     Uint32                      InlineConstantOffset)
+{
+    VERIFY_EXPR(pBuffer);
+    VERIFY_EXPR(m_HasInlineConstants);
+    VERIFY_EXPR(m_pResourceData);
+
+#ifdef DILIGENT_DEBUG
+    if (InlineConstantOffset != ~0u)
+    {
+        VERIFY(InlineConstantOffset + NumConstants <= m_DbgAssignedInlineConstants.size(), "Inline constant storage overflow");
+        for (Uint32 i = 0; i < NumConstants; ++i)
+        {
+            VERIFY(!m_DbgAssignedInlineConstants[InlineConstantOffset + i], "Inline constant storage at offset ", InlineConstantOffset + i, " has already been assigned");
+            m_DbgAssignedInlineConstants[InlineConstantOffset + i] = true;
+        }
+    }
+#endif
+
+    CachedUB& UB           = GetUB(CacheOffset);
+    UB.pBuffer             = std::move(pBuffer);
+    UB.BaseOffset          = 0;
+    UB.RangeSize           = NumConstants * sizeof(Uint32);
+    UB.DynamicOffset       = 0;
+    UB.pInlineConstantData = reinterpret_cast<Uint32*>(m_pResourceData.get() + m_MemoryEndOffset) + InlineConstantOffset;
+}
+
+void ShaderResourceCacheGL::CopyInlineConstants(const ShaderResourceCacheGL& SrcCache,
+                                                Uint32                       CacheOffset,
+                                                Uint32                       NumConstants)
+{
+    VERIFY(CacheOffset < GetUBCount(), "Destination index is out of range");
+    VERIFY(CacheOffset < SrcCache.GetUBCount(), "Source index is out of range");
+
+    const CachedUB& SrcUB = SrcCache.GetConstUB(CacheOffset);
+    CachedUB&       DstUB = GetUB(CacheOffset);
+
+    VERIFY(SrcUB.pInlineConstantData != nullptr, "Source inline constant data is null");
+    VERIFY(DstUB.pInlineConstantData != nullptr, "Destination inline constant data is null");
+    VERIFY(SrcUB.RangeSize == NumConstants * sizeof(Uint32), "Source inline constant buffer size mismatch");
+    VERIFY(DstUB.RangeSize == NumConstants * sizeof(Uint32), "Destination inline constant buffer size mismatch");
+
+    memcpy(DstUB.pInlineConstantData,
+           SrcUB.pInlineConstantData,
+           NumConstants * sizeof(Uint32));
+}
+
 #ifdef DILIGENT_DEBUG
 void ShaderResourceCacheGL::DbgVerifyDynamicBufferMasks() const
 {
@@ -357,6 +409,14 @@ void ShaderResourceCacheGL::DbgVerifyDynamicBufferMasks() const
         const CachedSSBO& SSBO    = GetConstSSBO(ssbo);
         const Uint64      SSBOBit = Uint64{1} << Uint64{ssbo};
         VERIFY(((m_DynamicSSBOMask & SSBOBit) != 0) == (SSBO.IsDynamic() && (m_DynamicSSBOSlotMask & SSBOBit) != 0), "Bit ", ssbo, " in m_DynamicSSBOMask is invalid");
+    }
+}
+
+void ShaderResourceCacheGL::DbgVerifyResourceInitialization() const
+{
+    for (bool InlineConstAssigned : m_DbgAssignedInlineConstants)
+    {
+        VERIFY(InlineConstAssigned, "Not all inline constant storage has been assigned. This is a bug.");
     }
 }
 #endif

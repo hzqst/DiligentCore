@@ -367,21 +367,7 @@ public:
     void InitInlineConstantBuffer(Uint32                      CacheOffset,
                                   RefCntAutoPtr<BufferGLImpl> pBuffer,
                                   Uint32                      NumConstants,
-                                  Uint32                      InlineConstantOffset)
-    {
-        VERIFY_EXPR(pBuffer);
-        VERIFY_EXPR(m_HasInlineConstants);
-        VERIFY_EXPR(m_pResourceData);
-
-        CachedUB& UB           = GetUB(CacheOffset);
-        UB.pBuffer             = std::move(pBuffer);
-        UB.BaseOffset          = 0;
-        UB.RangeSize           = NumConstants * sizeof(Uint32);
-        UB.DynamicOffset       = 0;
-        UB.pInlineConstantData = reinterpret_cast<Uint32*>(m_pResourceData.get() + m_MemoryEndOffset) + InlineConstantOffset;
-
-        UpdateRevision();
-    }
+                                  Uint32                      InlineConstantOffset);
 
     void SetInlineConstants(Uint32      CacheOffset,
                             const void* pConstants,
@@ -399,26 +385,11 @@ public:
 
     void CopyInlineConstants(const ShaderResourceCacheGL& SrcCache,
                              Uint32                       CacheOffset,
-                             Uint32                       NumConstants)
-    {
-        VERIFY(CacheOffset < GetUBCount(), "Destination index is out of range");
-        VERIFY(CacheOffset < SrcCache.GetUBCount(), "Source index is out of range");
-
-        const CachedUB& SrcUB = SrcCache.GetConstUB(CacheOffset);
-        CachedUB&       DstUB = GetUB(CacheOffset);
-
-        VERIFY(SrcUB.pInlineConstantData != nullptr, "Source inline constant data is null");
-        VERIFY(DstUB.pInlineConstantData != nullptr, "Destination inline constant data is null");
-        VERIFY(SrcUB.RangeSize == NumConstants * sizeof(Uint32), "Source inline constant buffer size mismatch");
-        VERIFY(DstUB.RangeSize == NumConstants * sizeof(Uint32), "Destination inline constant buffer size mismatch");
-
-        memcpy(DstUB.pInlineConstantData,
-               SrcUB.pInlineConstantData,
-               NumConstants * sizeof(Uint32));
-    }
+                             Uint32                       NumConstants);
 
 #ifdef DILIGENT_DEBUG
     void DbgVerifyDynamicBufferMasks() const;
+    void DbgVerifyResourceInitialization() const;
 #endif
 
 private:
@@ -468,7 +439,8 @@ private:
     bool m_HasInlineConstants = false;
 
 #ifdef DILIGENT_DEVELOPMENT
-    bool m_bStaticResourcesInitialized = false;
+    bool              m_bStaticResourcesInitialized = false;
+    std::vector<bool> m_DbgAssignedInlineConstants;
 #endif
 };
 

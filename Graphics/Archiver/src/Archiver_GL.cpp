@@ -437,7 +437,6 @@ private:
         }
 
         Options.separate_shader_objects = GLShaderCI.DeviceInfo.Features.SeparablePrograms;
-
         // On some targets (WebGPU), uninitialized variables are banned.
         Options.force_zero_initialized_variables = true;
         // For opcodes where we have to perform explicit additional nan checks, very ugly code is generated.
