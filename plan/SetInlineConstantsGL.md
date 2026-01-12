@@ -9,11 +9,6 @@
 - No push-constant path for OpenGL.
 - No API surface changes.
 
-## Misc rules
-- Always run `BuildTools\FormatValidation\validate_format_win.bat` / 
-`BuildTools\FormatValidation\validate_format_linux.sh` after finish each step, to verify the code base after finishing each step. Making sure the formatting validation succeed. If any formatting issue found, we should follow `clang-format`'s advice to fix the formatting issue.
-- Copyright date need to be updated if we applied changes to source/header files.
-
 ## Desired Data Flow (D3D11 parity)
 1) `SetInlineConstants()` writes into SRB (or signature) cache staging.
 2) Draw/dispatch commit checks inline-constant mask.
