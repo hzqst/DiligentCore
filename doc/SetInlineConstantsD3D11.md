@@ -1,468 +1,141 @@
-# D3D11 InlineConstants Buffer管理与BindPoint分配机制
+# D3D11 Inline Constants: CPU -> Staging -> GPU Submission Flow
 
-## 概述
+On the D3D11 backend, inline constants are implemented by **emulating** them with `USAGE_DYNAMIC` constant buffers (CBs). This document describes the complete submission pipeline:
 
-在D3D11后端中，InlineConstants通过**动态常量缓冲区（Dynamic Constant Buffer）**模拟实现。与D3D12的Root Constants不同，D3D11需要创建实际的`ID3D11Buffer`对象，并通过`Map`/`Unmap`机制进行数据更新。
+1. CPU writes via `SetInlineConstants()` into per-SRB staging memory
+2. At draw/dispatch time, staging data is uploaded into a shared dynamic CB via `Map(WRITE_DISCARD) -> memcpy -> Unmap`
+3. The dynamic CB is bound to the correct shader stages/slots, so the draw/dispatch sees the updated constants
 
-本文档详细分析了D3D11 InlineConstants的以下几个关键方面：
-1. 核心数据结构
-2. Buffer的创建与生命周期管理
-3. BindPoint的分配机制
-4. ResourceCache中的初始化
-5. 数据更新流程
+For the API usage perspective, see `doc/SetInlineConstants.md`.
 
 ---
 
-## 1. 核心数据结构
+## 0. Key semantics and constraints
 
-### 1.1 InlineConstantBufferAttribsD3D11
+### 0.1 `ArraySize` means "number of 32-bit values"
 
-该结构定义在`PipelineResourceSignatureD3D11Impl.hpp`中，用于存储每个Inline Constant Buffer的属性：
+For inline constants, `PipelineResourceDesc::ArraySize` is the number of 4-byte values, not bytes.
 
-```cpp
-struct InlineConstantBufferAttribsD3D11
-{
-    D3D11ResourceBindPoints        BindPoints;     // 各Shader阶段的绑定点
-    Uint32                         NumConstants;  // 32位常量的数量
-    RefCntAutoPtr<BufferD3D11Impl> pBuffer;       // 内部创建的动态常量缓冲区
-};
-```
+Interface reference:
+- `Graphics/GraphicsEngine/interface/PipelineResourceSignature.h` (`PipelineResourceDesc::ArraySize`, `GetArraySize()`)
 
-**字段说明：**
-| 字段 | 类型 | 描述 |
-|------|------|------|
-| `BindPoints` | `D3D11ResourceBindPoints` | 存储各Shader阶段（VS/PS/GS/HS/DS/CS）的CBV绑定槽位 |
-| `NumConstants` | `Uint32` | 32位常量的数量（即`ArraySize`参数，不是字节数） |
-| `pBuffer` | `RefCntAutoPtr<BufferD3D11Impl>` | 内部创建的`USAGE_DYNAMIC`缓冲区对象 |
+### 0.2 Inline constants are constant buffers with a special flag
 
-### 1.2 CachedCB中的Inline Constants支持
-
-`ShaderResourceCacheD3D11::CachedCB`结构扩展了对Inline Constants的支持：
-
-```cpp
-struct CachedCB
-{
-    RefCntAutoPtr<BufferD3D11Impl> pBuff;             // 缓冲区对象
-    Uint32 BaseOffset = 0;                            // 基础偏移（字节）
-    Uint32 RangeSize  = 0;                            // 范围大小（字节）
-    Uint32 DynamicOffset = 0;                         // 动态偏移（字节）
-    void* pInlineConstantData = nullptr;              // CPU端暂存数据指针
-    
-    void SetInlineConstants(const void* pSrcConstants, 
-                           Uint32 FirstConstant, 
-                           Uint32 NumConstants);
-};
-```
-
-`pInlineConstantData`指向ResourceCache中分配的CPU端暂存内存，用于在`SetInlineConstants`调用时暂存数据，在Draw/Dispatch时再批量上传到GPU。
+Rules:
+- Only `SHADER_RESOURCE_TYPE_CONSTANT_BUFFER` may use `PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS`.
+- `PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS` cannot be combined with other flags.
+- Size must satisfy `ArraySize <= MAX_INLINE_CONSTANTS` (currently 64).
 
 ---
 
-## 2. Buffer创建与生命周期管理
+## 1. What lives where (architecture)
 
-### 2.1 创建时机
+D3D11 uses the following model:
 
-Buffer在`PipelineResourceSignatureD3D11Impl::CreateLayout()`中创建：
+1) **Per-SRB CPU staging**
+- Each SRB stores a staging array for each inline-constant resource.
+- `SetInlineConstants()` writes into this staging array only.
 
-```
-PipelineResourceSignatureD3D11Impl构造函数
-    └─> CreateLayout(IsSerialized = false)
-        └─> 遍历Resources
-            └─> 如果资源带有 PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS
-                └─> 创建动态常量缓冲区
-```
+2) **Signature-owned GPU-side dynamic constant buffers**
+- For each inline-constant resource, the signature creates an internal `USAGE_DYNAMIC` constant buffer.
+- All SRBs created from the same signature share this same buffer object.
 
-### 2.2 创建过程详解
-
-在`CreateLayout()`中的关键代码：
-
-```cpp
-if (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
-{
-    InlineConstantBufferAttribsD3D11& InlineCBAttribs{m_InlineConstantBuffers[InlineConstantBufferIdx++]};
-    InlineCBAttribs.BindPoints   = BindPoints;        // 保存分配的绑定点
-    InlineCBAttribs.NumConstants = ResDesc.ArraySize; // ArraySize存储的是常量数量
-
-    // All SRBs created from this signature will share the same inline constant buffer.
-    InlineCBAttribs.pBuffer = CreateInlineConstantBuffer(ResDesc.Name, ResDesc.ArraySize);
-}
-```
-
-> 注：`CreateInlineConstantBuffer()` 是通用的辅助函数（`Graphics/GraphicsEngine/include/PipelineResourceSignatureBase.hpp`），
-> 内部创建 `USAGE_DYNAMIC + CPU_ACCESS_WRITE` 的 `BIND_UNIFORM_BUFFER`，大小为 `NumConstants * sizeof(Uint32)`，名称为 `"SignatureName - ResName"`。
-
-### 2.3 Buffer共享设计
-
-**重要设计决策**：所有从同一Signature创建的SRB共享同一个内部Buffer对象。
-
-```
-PipelineResourceSignature
-    └─> m_InlineConstantBuffers[i].pBuffer  ─┬─> SRB1的ResourceCache引用同一Buffer
-                                              ├─> SRB2的ResourceCache引用同一Buffer
-                                              └─> SRB3的ResourceCache引用同一Buffer
-```
-
-这种设计的权衡：
-- **优点**：减少内存消耗
-- **缺点**：由于Buffer在Signature内共享，绑定/提交不同SRB时需要把该SRB的CPU暂存数据写入同一个D3D11 Buffer；频繁切换SRB可能导致更新更频繁
-
-另一种可能的设计是每个SRB有独立Buffer，可以在常量未变化时跳过更新，但会增加内存占用。
-
-### 2.4 生命周期
-
-```
-Signature创建 ──> Buffer创建（CreateLayout）
-                      │
-                      ├──> SRB1创建：引用Buffer
-                      ├──> SRB2创建：引用Buffer
-                      │
-Signature销毁 ──> Buffer销毁（RefCntAutoPtr自动释放）
-```
+At draw/dispatch time, the backend uploads the currently bound SRB’s staging data into the shared dynamic buffer and then binds it.
 
 ---
 
-## 3. BindPoint分配机制
+## 2. Resource creation: internal dynamic CB per inline-constant resource
 
-### 3.1 分配算法
+The buffer is created during pipeline resource signature layout creation.
 
-BindPoint分配在`CreateLayout()`中通过`AllocBindPoints`辅助函数完成：
+Implementation:
+- `Graphics/GraphicsEngineD3D11/src/PipelineResourceSignatureD3D11Impl.cpp`
+  - `PipelineResourceSignatureD3D11Impl::CreateLayout(...)` (creates inline-constant buffers via `CreateInlineConstantBuffer(...)`)
+- `Graphics/GraphicsEngine/include/PipelineResourceSignatureBase.hpp`
+  - `CreateInlineConstantBuffer(...)` creates a `USAGE_DYNAMIC + CPU_ACCESS_WRITE` uniform buffer of size `NumConstants * sizeof(Uint32)`
 
-```cpp
-const auto AllocBindPoints = [](D3D11ShaderResourceCounters& ResCounters,
-                                D3D11ResourceBindPoints&     BindPoints,
-                                SHADER_TYPE                  ShaderStages,
-                                Uint32                       ArraySize,
-                                D3D11_RESOURCE_RANGE         Range)
-{
-    while (ShaderStages != SHADER_TYPE_UNKNOWN)
-    {
-        const Int32 ShaderInd = ExtractFirstShaderStageIndex(ShaderStages);
-        // 为当前Shader阶段分配绑定点
-        BindPoints[ShaderInd] = ResCounters[Range][ShaderInd];
-        // 递增计数器
-        ResCounters[Range][ShaderInd] += ArraySize;
-    }
-};
-```
-
-### 3.2 Inline Constants的特殊处理
-
-对于Inline Constants，`ArraySize`表示常量数量，但资源只占用**一个**CBV槽位：
-
-```cpp
-// 获取实际的数组大小（对于Inline Constants返回1）
-const Uint32 ArraySize = ResDesc.GetArraySize();  
-// GetArraySize()内部判断：如果是InlineConstants则返回1，否则返回ArraySize
-
-AllocBindPoints(m_ResourceCounters, BindPoints, ResDesc.ShaderStages, ArraySize, Range);
-```
-
-### 3.3 BindPoint数据结构
-
-`D3D11ResourceBindPoints`存储了6个Shader阶段的绑定槽位：
-
-```cpp
-struct D3D11ResourceBindPoints
-{
-    // NumShaderTypes = 6 (VS, PS, GS, HS, DS, CS)
-    std::array<Uint8, NumShaderTypes> Bindings;
-    
-    Uint8 operator[](Int32 ShaderInd) const { return Bindings[ShaderInd]; }
-    SHADER_TYPE GetActiveStages() const;  // 返回哪些Shader阶段激活
-    bool IsStageActive(Int32 ShaderInd) const;
-};
-```
-
-### 3.4 分配示例
-
-假设Signature定义如下资源：
-
-```cpp
-PipelineResourceDesc Resources[] = {
-    {"CameraCB",    SHADER_TYPE_VERTEX | SHADER_TYPE_PIXEL, 1, CB, STATIC, 0},
-    {"TransformCB", SHADER_TYPE_VERTEX, 16, CB, STATIC, INLINE_CONSTANTS},  // Inline
-    {"MaterialCB",  SHADER_TYPE_PIXEL,  8,  CB, DYNAMIC, INLINE_CONSTANTS}, // Inline
-};
-```
-
-分配后的BindPoint：
-
-| 资源 | VS BindPoint | PS BindPoint |
-|------|--------------|--------------|
-| CameraCB | 0 | 0 |
-| TransformCB | 1 | - |
-| MaterialCB | - | 1 |
+Important detail:
+- The buffer object is **shared** by all SRBs created from the same signature.
 
 ---
 
-## 4. ResourceCache中的初始化
+## 3. SRB initialization: staging memory allocation and association
 
-### 4.1 内存布局
+When an SRB resource cache is initialized, the cache allocates storage for all resources, including inline constants.
 
-`ShaderResourceCacheD3D11`的内存布局如下：
+Inline-constant initialization binds:
+- the signature-owned dynamic CB object, and
+- a per-SRB staging pointer (`pInlineConstantData`)
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  CachedCB 数组   │  ID3D11Buffer* 数组  │  ... SRV/Sampler/UAV ...  │        │
-│  (VS/PS/GS...)   │  (VS/PS/GS...)       │                           │        │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                               Inline Constant Data Storage                  │
-│  ┌──────────────┬──────────────┬──────────────┐                             │
-│  │ InlineCB[0]  │ InlineCB[1]  │ InlineCB[2]  │ ...                         │
-│  │ (NumConst*4B)│ (NumConst*4B)│ (NumConst*4B)│                             │
-│  └──────────────┴──────────────┴──────────────┘                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### 4.2 Initialize流程
-
-`ShaderResourceCacheD3D11::Initialize()`的关键步骤：
-
-```cpp
-void ShaderResourceCacheD3D11::Initialize(
-    const D3D11ShaderResourceCounters&      ResCount,
-    IMemoryAllocator&                       MemAllocator,
-    const std::array<Uint16, NumShaderTypes>* pDynamicCBSlotsMask,
-    const InlineConstantBufferAttribsD3D11* pInlineCBs,
-    Uint32                                  NumInlineCBs)
-{
-    // 1. 计算Inline Constants总大小
-    Uint32 TotalInlineConstants = 0;
-    ProcessInlineCBs([&TotalInlineConstants](const InlineConstantBufferAttribsD3D11& attr) {
-        TotalInlineConstants += attr.NumConstants;
-    });
-    
-    // 2. 分配内存（包括Inline Constant Data Storage）
-    BufferSize = MemOffset + TotalInlineConstants * sizeof(Uint32);
-    m_pResourceData = ALLOCATE(MemAllocator, "...", Uint8, BufferSize);
-    
-    // 3. 初始化Inline Constant Buffers
-    Uint32* pInlineCBData = (Uint32*)(m_pResourceData.get() + MemOffset);
-    ProcessInlineCBs([&pInlineCBData, this](const InlineConstantBufferAttribsD3D11& attr) {
-        InitInlineConstantBuffer(attr.BindPoints, attr.pBuffer, attr.NumConstants, pInlineCBData);
-        pInlineCBData += attr.NumConstants;  // 移动到下一个Inline CB的存储位置
-    });
-}
-```
-
-### 4.3 InitInlineConstantBuffer
-
-该函数将Buffer和CPU暂存指针绑定到所有活跃Shader阶段的CachedCB槽位：
-
-```cpp
-void ShaderResourceCacheD3D11::InitInlineConstantBuffer(
-    const D3D11ResourceBindPoints& BindPoints,
-    RefCntAutoPtr<BufferD3D11Impl> pBuffer,
-    Uint32                         NumConstants,
-    void*                          pInlineConstantData)
-{
-    ID3D11Buffer* pd3d11Buffer = pBuffer->GetD3D11Buffer();
-    
-    // 遍历所有活跃的Shader阶段
-    for (SHADER_TYPE ActiveStages = BindPoints.GetActiveStages(); 
-         ActiveStages != SHADER_TYPE_UNKNOWN;)
-    {
-        const Uint32 ShaderInd = ExtractFirstShaderStageIndex(ActiveStages);
-        const Uint32 Binding   = BindPoints[ShaderInd];
-        
-        auto  ResArrays = GetResourceArrays<D3D11_RESOURCE_RANGE_CBV>(ShaderInd);
-        auto& CachedRes = ResArrays.first[Binding];
-        auto& pd3d11Res = ResArrays.second[Binding];
-        
-        // 设置缓冲区和暂存指针（所有阶段共享同一暂存内存）
-        CachedRes.pBuff               = pBuffer;
-        CachedRes.RangeSize           = NumConstants * sizeof(Uint32);
-        CachedRes.pInlineConstantData = pInlineConstantData;
-        pd3d11Res                     = pd3d11Buffer;
-    }
-}
-```
-
-**关键点**：所有Shader阶段共享同一个`pInlineConstantData`指针，这意味着：
-- 调用`SetInlineConstants`只需更新一次数据
-- 所有阶段会自动获得相同的常量值
+Implementation:
+- `Graphics/GraphicsEngineD3D11/src/ShaderResourceCacheD3D11.cpp`
+  - `ShaderResourceCacheD3D11::Initialize(...)` allocates memory for inline constants and calls `InitInlineConstantBuffer(...)`
+  - `ShaderResourceCacheD3D11::InitInlineConstantBuffer(...)` assigns:
+    - `CachedCB::pBuff` (the shared `BufferD3D11Impl`)
+    - `CachedCB::pInlineConstantData` (the SRB’s staging pointer)
+    - and uses the same staging pointer for all active shader stages of that resource
 
 ---
 
-## 5. 数据更新流程
+## 4. CPU write path: `SetInlineConstants()` updates staging only
 
-### 5.1 完整数据流
+Call chain (D3D11):
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        用户代码                                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  pVariable->SetInlineConstants(pData, FirstConstant, NumConstants)          │
-└──────────────────────────────────┬──────────────────────────────────────────┘
-                                   │
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    ShaderVariableManagerD3D11                                │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │ ConstBuffBindInfo::SetConstants():                                     │  │
-│  │   1. 验证参数（DEV build only）                                        │  │
-│  │   2. 调用 m_ResourceCache.SetInlineConstants(...)                     │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────┬──────────────────────────────────────────┘
-                                   │
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                     ShaderResourceCacheD3D11                                 │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │ SetInlineConstants():                                                  │  │
-│  │   1. 根据BindPoints获取第一个活跃Shader阶段的Binding                   │  │
-│  │   2. 获取对应的CachedCB                                               │  │
-│  │   3. 调用 CachedCB::SetInlineConstants()                              │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-│                                                                              │
-│  CachedCB::SetInlineConstants():                                            │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │   memcpy(pInlineConstantData + FirstConstant*4, pSrc, NumConstants*4) │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-│                                     ↓ 数据暂存于CPU内存                      │
-└──────────────────────────────────┬──────────────────────────────────────────┘
-                                   │
-                                   ▼ (在Draw/Dispatch时)
-┌─────────────────────────────────────────────────────────────────────────────┐
-│               PipelineResourceSignatureD3D11Impl                             │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │ UpdateInlineConstantBuffers():                                         │  │
-│  │   for each inline constant buffer:                                     │  │
-│  │     pd3d11Ctx->Map(pd3d11CB, D3D11_MAP_WRITE_DISCARD)                 │  │
-│  │     memcpy(MappedData.pData, pInlineConstantData, Size)               │  │
-│  │     pd3d11Ctx->Unmap(pd3d11CB)                                        │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-│                                     ↓ 数据上传至GPU                          │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+1. User calls `IShaderResourceVariable::SetInlineConstants(...)`
+2. `ShaderVariableManagerD3D11` forwards to resource cache:
+   - `Graphics/GraphicsEngineD3D11/src/ShaderVariableManagerD3D11.cpp`
+3. `ShaderResourceCacheD3D11::SetInlineConstants(...)` locates the correct cached CB and calls:
+   - `Graphics/GraphicsEngineD3D11/include/ShaderResourceCacheD3D11.hpp`
+     - `CachedCB::SetInlineConstants(...)`
 
-补充：`UpdateInlineConstantBuffers()` 由 `DeviceContextD3D11Impl::BindShaderResources(...)` 触发；当 SRB 处于 stale 状态，或未指定 `DRAW_FLAG_INLINE_CONSTANTS_INTACT` 时会更新（`Map(D3D11_MAP_WRITE_DISCARD)` + `memcpy` + `Unmap`）。
-
-### 5.2 SetInlineConstants实现
-
-```cpp
-// ShaderResourceCacheD3D11.hpp
-__forceinline void ShaderResourceCacheD3D11::SetInlineConstants(
-    const D3D11ResourceBindPoints& BindPoints,
-    const void*                    pConstants,
-    Uint32                         FirstConstant,
-    Uint32                         NumConstants)
-{
-    // 由于所有Shader阶段共享同一暂存内存，只需更新一次
-    SHADER_TYPE ActiveStages = BindPoints.GetActiveStages();
-    const Uint32 ShaderInd0 = ExtractFirstShaderStageIndex(ActiveStages);
-    const Uint32 Binding0   = BindPoints[ShaderInd0];
-    
-    const auto ResArrays0 = GetResourceArrays<D3D11_RESOURCE_RANGE_CBV>(ShaderInd0);
-    ResArrays0.first[Binding0].SetInlineConstants(pConstants, FirstConstant, NumConstants);
-}
-```
-
-### 5.3 UpdateInlineConstantBuffers实现
-
-```cpp
-void PipelineResourceSignatureD3D11Impl::UpdateInlineConstantBuffers(
-    const ShaderResourceCacheD3D11& ResourceCache, 
-    ID3D11DeviceContext* pd3d11Ctx) const
-{
-    for (Uint32 i = 0; i < m_NumInlineConstantBuffers; ++i)
-    {
-        const InlineConstantBufferAttribsD3D11& InlineCBAttr = m_InlineConstantBuffers[i];
-        
-        // 获取D3D11 Buffer和暂存数据
-        ID3D11Buffer* pd3d11CB = nullptr;
-        const auto& InlineCB = ResourceCache.GetResource<D3D11_RESOURCE_RANGE_CBV>(
-            InlineCBAttr.BindPoints, &pd3d11CB);
-        
-        // Map + memcpy + Unmap
-        D3D11_MAPPED_SUBRESOURCE MappedData{};
-        if (SUCCEEDED(pd3d11Ctx->Map(pd3d11CB, 0, D3D11_MAP_WRITE_DISCARD, 0, &MappedData)))
-        {
-            memcpy(MappedData.pData, InlineCB.pInlineConstantData, 
-                   InlineCBAttr.NumConstants * sizeof(Uint32));
-            pd3d11Ctx->Unmap(pd3d11CB, 0);
-        }
-    }
-}
-```
+Behavior:
+- The implementation copies the provided 32-bit values into `CachedCB::pInlineConstantData` at offset `FirstConstant * sizeof(Uint32)`.
+- No D3D11 `Map/Unmap` happens here.
+- No D3D11 binding calls happen here.
 
 ---
 
-## 6. 静态变量的拷贝
+## 5. Commit stage: uploading staging -> GPU buffer via `Map(WRITE_DISCARD)`
 
-当SRB从Signature创建时，静态Inline Constants需要从Signature的静态缓存拷贝到SRB的缓存：
+Inline constants are uploaded during resource binding for draw/dispatch.
 
-```cpp
-void PipelineResourceSignatureD3D11Impl::CopyStaticResources(
-    ShaderResourceCacheD3D11& DstResourceCache) const
-{
-    for (静态资源...)
-    {
-        if (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
-        {
-            // 拷贝Inline Constants数据
-            DstResourceCache.CopyInlineConstants(SrcResourceCache, ResAttr.BindPoints, 
-                                                  ResDesc.ArraySize);
-        }
-        // ...
-    }
-}
-```
+The device context decides whether inline constants need updating:
+- If the SRB is stale (first use or resources changed), the update happens.
+- Otherwise, if you did not pass `DRAW_FLAG_INLINE_CONSTANTS_INTACT`, the update happens.
 
-```cpp
-inline void ShaderResourceCacheD3D11::CopyInlineConstants(
-    const ShaderResourceCacheD3D11& SrcCache, 
-    const D3D11ResourceBindPoints& BindPoints, 
-    Uint32 NumConstants)
-{
-    // 由于所有阶段共享同一暂存内存，只需拷贝一次
-    const Int32 ShaderInd0 = ExtractFirstShaderStageIndex(BindPoints.GetActiveStages());
-    const Uint32 Binding0  = BindPoints[ShaderInd0];
-    
-    const auto SrcResArrays0 = SrcCache.GetConstResourceArrays<D3D11_RESOURCE_RANGE_CBV>(ShaderInd0);
-    const auto DstResArrays0 = GetResourceArrays<D3D11_RESOURCE_RANGE_CBV>(ShaderInd0);
-    
-    memcpy(DstResArrays0.first[Binding0].pInlineConstantData,
-           SrcResArrays0.first[Binding0].pInlineConstantData,
-           NumConstants * sizeof(Uint32));
-}
-```
+Implementation (decision point):
+- `Graphics/GraphicsEngineD3D11/src/DeviceContextD3D11Impl.cpp`
+  - When `(InlineConstantsSRBMask & SignBit) != 0` and `(SRBStale || !InlineConstantsIntact)`, it calls:
+    - `PipelineResourceSignatureD3D11Impl::UpdateInlineConstantBuffers(...)`
+
+Implementation (actual upload):
+- `Graphics/GraphicsEngineD3D11/src/PipelineResourceSignatureD3D11Impl.cpp`
+  - `PipelineResourceSignatureD3D11Impl::UpdateInlineConstantBuffers(...)` does:
+    1) Fetch the D3D11 buffer and staging pointer from the SRB cache
+    2) `Map(D3D11_MAP_WRITE_DISCARD)`
+    3) `memcpy(mapped, pInlineConstantData, NumConstants * 4)`
+    4) `Unmap`
+
+At this point the shared dynamic CB contains the correct values for the currently bound SRB, and subsequent draw/dispatch will observe them.
 
 ---
 
-## 7. 性能考虑
+## 6. What `DRAW_FLAG_INLINE_CONSTANTS_INTACT` does on D3D11
 
-### 7.1 与D3D12/Vulkan的对比
+If you know that inline constants used by the draw/dispatch have not changed since the previous submission, pass `DRAW_FLAG_INLINE_CONSTANTS_INTACT` to skip the `Map/Unmap` upload.
 
-| 方面 | D3D11 | D3D12 | Vulkan (Push Constants) |
-|------|-------|-------|-------------------------|
-| 实现方式 | Dynamic CB + Map | Root Constants | vkCmdPushConstants |
-| 内存 | 需要Buffer对象 | 内联在Root Signature中 | 内联在Command Buffer中 |
-| 更新开销 | Map/Unmap开销 | 直接写入 | 直接写入 |
-| 性能 | 中等 | 高 | 高 |
-
-### 7.2 优化建议
-
-1. **使用`DRAW_FLAG_INLINE_CONSTANTS_INTACT`**
-   - 如果Inline Constants未改变，可以跳过`UpdateInlineConstantBuffers`调用
-
-2. **批量更新**
-   - 尽量一次性设置所有常量，避免多次调用`SetInlineConstants`
-
-3. **适当的大小**
-   - Inline Constants适合小数据（<= 128字节）
-   - 大数据应使用常规Constant Buffer
+This is especially valuable when:
+- the same SRB is rebound many times with unchanged inline constants, or
+- you want to avoid redundant discard-map updates.
 
 ---
 
-## 8. 参考代码位置
+## 7. Implications of "signature-owned shared buffer"
 
-| 组件 | 文件路径 |
-|------|----------|
-| `InlineConstantBufferAttribsD3D11` | `Graphics/GraphicsEngineD3D11/include/PipelineResourceSignatureD3D11Impl.hpp` |
-| `CachedCB::SetInlineConstants` | `Graphics/GraphicsEngineD3D11/include/ShaderResourceCacheD3D11.hpp` |
-| `CreateLayout()` | `Graphics/GraphicsEngineD3D11/src/PipelineResourceSignatureD3D11Impl.cpp` |
-| `Initialize()` | `Graphics/GraphicsEngineD3D11/src/ShaderResourceCacheD3D11.cpp` |
-| `UpdateInlineConstantBuffers()` | `Graphics/GraphicsEngineD3D11/src/PipelineResourceSignatureD3D11Impl.cpp` |
-| `ConstBuffBindInfo::SetConstants()` | `Graphics/GraphicsEngineD3D11/src/ShaderVariableManagerD3D11.cpp` |
+Because the dynamic constant buffer object is shared by all SRBs created from the same signature:
+- Correctness is ensured by updating the buffer right before the draw/dispatch that uses an SRB.
+- If you rapidly switch SRBs (each with different inline constants), the backend will likely upload on each switch (unless you can use the intact flag).
 
+If you need to minimize updates:
+- Batch draw calls by SRB when possible, and/or
+- use `DRAW_FLAG_INLINE_CONSTANTS_INTACT` when values are unchanged.
