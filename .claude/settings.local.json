@@ -29,7 +29,8 @@
       "Bash(BuildToolsFormatValidationvalidate_format_win.bat)",
       "Bash(cmd /c \"BuildTools\\\\FormatValidation\\\\validate_format_win.bat\")",
       "Bash(cmd /c \"cd /d D:\\\\DiligentCore && BuildTools\\\\FormatValidation\\\\validate_format_win.bat\")",
-      "Bash(cmd /c \"cd /d d:\\\\DiligentCore && BuildTools\\\\FormatValidation\\\\validate_format_win.bat\")"
+      "Bash(cmd /c \"cd /d d:\\\\DiligentCore && BuildTools\\\\FormatValidation\\\\validate_format_win.bat\")",
+      "mcp__plugin_serena_serena__read_memory"
     ]
   }
 }
