@@ -70,7 +70,9 @@ cmake --build build\x64\Debug --config Debug --target install
 ### Format Validation
 ```bash
 # Windows validation script
-BuildTools/FormatValidation/validate_format_win.bat
+cd BuildTools/FormatValidation
+
+validate_format_win.bat
 
 # Or use CMake target
 cmake --build build\x64\Debug --target DiligentCore-ValidateFormatting
@@ -129,6 +131,6 @@ python ./BuildTools/.NET/dotnet-build-package.py -c Debug -d ./
 ## Important Notes
 
 - Copyright date needs to be updated if we apply changes to source/header files.
-- Always cd `BuildTools/FormatValidation` and run `validate_format_win.bat` /
+- Always cd `BuildTools/FormatValidation`, and later run `validate_format_win.bat` /
 `validate_format_linux.sh` after finishing code modification, to verify the codebase after finishing each step. Make sure the formatting validation succeeds. If any formatting issues are found, follow `clang-format`'s advice to fix them.
 - Use *serena* to explore the code base.

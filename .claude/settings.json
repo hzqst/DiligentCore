@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmd /c \"cd /d D:\\\\DiligentCore\\\\BuildTools\\\\FormatValidation && validate_format_win.bat\")"
+    ]
+  }
+}
