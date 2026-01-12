@@ -30,7 +30,13 @@
       "Bash(cmd /c \"BuildTools\\\\FormatValidation\\\\validate_format_win.bat\")",
       "Bash(cmd /c \"cd /d D:\\\\DiligentCore && BuildTools\\\\FormatValidation\\\\validate_format_win.bat\")",
       "Bash(cmd /c \"cd /d d:\\\\DiligentCore && BuildTools\\\\FormatValidation\\\\validate_format_win.bat\")",
-      "mcp__plugin_serena_serena__read_memory"
+      "mcp__plugin_serena_serena__read_memory",
+      "Bash(git log:*)",
+      "Bash(validate_format_win.bat)",
+      "Bash(cmd /c \"cd /d D:\\\\DiligentCore && python BuildTools\\\\FormatValidation\\\\validate_format_win.py\")",
+      "Bash(python clang-format-validate.py:*)",
+      "Bash(powershell -Command \"Test-Path ''D:\\\\DiligentCore\\\\BuildTools\\\\FormatValidation\\\\clang-format_10.0.0.exe''\")",
+      "Bash(powershell -Command:*)"
     ]
   }
 }
