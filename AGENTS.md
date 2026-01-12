@@ -70,7 +70,9 @@ cmake --build build\x64\Debug --config Debug --target install
 ### Format Validation
 ```bash
 # Windows validation script
-BuildTools/FormatValidation/validate_format_win.bat
+cd BuildTools/FormatValidation
+
+validate_format_win.bat
 
 # Or use CMake target
 cmake --build build\x64\Debug --target DiligentCore-ValidateFormatting
