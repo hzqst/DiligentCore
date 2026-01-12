@@ -43,7 +43,7 @@
   - `Uint32 NumConstants` - Number of 32-bit constants (from ResDesc.ArraySize)
   - `RefCntAutoPtr<BufferGLImpl> pBuffer` - Shared dynamic UBO
 - Added class members:
-  - `Uint32 m_NumInlineConstantBuffers` - Number of inline constant buffers
+  - `Uint16 m_NumInlineConstantBuffers` - Number of inline constant buffers
   - `Uint16 m_TotalInlineConstants` - Total number of 32-bit constants
   - `std::unique_ptr<InlineConstantBufferAttribsGL[]> m_InlineConstantBuffers` - Inline constant buffer attributes array
 - Note (follow-up refactors):
@@ -608,7 +608,7 @@ The buffer that is bound should be the same buffer that is updated:
 - `UpdateInlineConstantBuffers()` updates buffers from SRB cache
 - The signature's `InlineCBAttr.pBuffer` is only used during SRB initialization to populate the cache
 
-**Note**: Vulkan has the same issue but uses `InlineCBAttr.pBuffer` (signature's buffer) instead of the buffer from cache. See `plan/SetInlineConstants_InconsistencyCommit.md` for details.
+**Note**: Vulkan had the same cross-signature SRB issue, but it is now fixed. See `plan/SetInlineConstants_InconsistencyCommit.md` for details.
 
 ### 8.6) Fix: buffer block with binding 0 has mismatching definitions (RenderStateCache test)
 

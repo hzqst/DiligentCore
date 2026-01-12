@@ -6,8 +6,8 @@ When an SRB (Shader Resource Binding) created from one signature is used with a 
 
 ## Affected Backends
 
-- **Vulkan** (existing issue)
-- **OpenGL** (fixed in this changeset)
+- **Vulkan** (fixed)
+- **OpenGL** (fixed)
 
 ## Root Cause Analysis
 
@@ -31,20 +31,21 @@ pd3d11Ctx->Map(pd3d11CB, ...);  // Update the buffer from cache
 
 D3D11 retrieves the buffer pointer **from the SRB cache** and updates it. Since `BindResources` also binds the buffer from the SRB cache, the **update and binding use the same buffer**. This design is consistent.
 
-#### Vulkan (Has This Issue)
+#### Vulkan (Fixed)
+
+Fixed by updating the buffer stored in the SRB cache (the same buffer that was written into the descriptor set during SRB initialization), instead of the current signature's `InlineCBAttr.pBuffer`.
 
 ```cpp
-// CommitInlineConstants - Vulkan
-const void* pInlineConstantData = ResourceCache.GetInlineConstantData(
-    InlineCBAttr.DescrSet, InlineCBAttr.SRBCacheOffset);  // Staging from SRB cache
-Attribs.Ctx.MapBuffer(InlineCBAttr.pBuffer, ...);  // Update CURRENT signature's buffer!
+// CommitInlineConstants - Vulkan (current)
+const ShaderResourceCacheVk::DescriptorSet& DescrSet  = ResourceCache.GetDescriptorSet(InlineCBAttr.DescrSet);
+const ShaderResourceCacheVk::Resource&      CachedRes = DescrSet.GetResource(InlineCBAttr.SRBCacheOffset);
+BufferVkImpl*                               pBuffer   = CachedRes.pObject.RawPtr<BufferVkImpl>();
+VERIFY(pBuffer != nullptr, "Inline constant buffer is null in SRB cache");
+
+Attribs.Ctx.MapBuffer(pBuffer, ...); // Update the buffer from SRB cache
 ```
 
-Vulkan retrieves staging data from the SRB cache, but updates the **current signature's** `InlineCBAttr.pBuffer`. However, the descriptor set was written during SRB initialization with the **original signature's** buffer. This means:
-
-- **Descriptor set binding**: Original signature's buffer (from SRB creation)
-- **Data update**: Current signature's buffer (from PSO's signature)
-- **Result**: Data is written to wrong buffer when cross-signature SRB is used
+This follows D3D11's design principle: the buffer that is bound should be the same buffer that is updated.
 
 #### OpenGL (Fixed)
 
@@ -70,9 +71,9 @@ Now OpenGL follows D3D11's design: get the buffer from SRB cache and update it. 
 
 ## Impact
 
-### When the Issue Manifests (Vulkan)
+### When the Issue Manifested (Vulkan)
 
-The issue only manifests when:
+The issue only manifested when:
 1. An SRB is created from signature A
 2. The same SRB is used with a compatible but different signature B
 3. Inline constants are modified after `CommitShaderResources()` but before `Draw()`
@@ -81,13 +82,13 @@ Common scenario: `RenderStateCache` test where PSOs are serialized/deserialized,
 
 ### Symptoms
 
-- Inline constant values appear as zeros or stale data
-- Shader reads from old buffer while new data is written to different buffer
+- Inline constant values appeared as zeros or stale data
+- Shader read from old buffer while new data was written to different buffer
 - Intermittent rendering artifacts when using cached/serialized PSOs with shared SRBs
 
-## Recommended Fix for Vulkan
+## Vulkan Fix (Implemented)
 
-Modify `PipelineResourceSignatureVkImpl::CommitInlineConstants()` to update the buffer stored in the SRB cache instead of the signature's `InlineCBAttr.pBuffer`:
+`PipelineResourceSignatureVkImpl::CommitInlineConstants()` now updates the buffer stored in the SRB cache instead of the signature's `InlineCBAttr.pBuffer`:
 
 Before:
 ```cpp
