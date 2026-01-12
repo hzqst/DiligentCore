@@ -5,6 +5,7 @@ This document is written for **Diligent API users**. It explains how to define a
 Backend-specific submission flow (CPU -> staging -> GPU) is documented here:
 - Vulkan: `doc/SetInlineConstantsVulkan.md`
 - D3D11: `doc/SetInlineConstantsD3D11.md`
+- OpenGL: `doc/SetInlineConstantsGL.md`
 
 ---
 
@@ -50,7 +51,7 @@ Important semantics:
 
 ## 3. Shader-side expectations
 
-From the shader’s point of view, inline constants map to a constant-buffer-like resource with the same name. Keep your shader declaration consistent with the size/layout implied by `ArraySize`.
+From the shader's point of view, inline constants map to a constant-buffer-like resource with the same name. Keep your shader declaration consistent with the size/layout implied by `ArraySize`.
 
 Practical tips:
 - Treat the payload as an array of 32-bit words for cross-backend consistency.
@@ -58,7 +59,7 @@ Practical tips:
 
 ### Vulkan (SPIR-V) special case: push-constant blocks
 
-If a Vulkan shader’s SPIR-V contains a push-constant block (storage class `PushConstant`, often a `PushConstantsBlock`), Diligent reflects it as a constant-buffer-like resource with `PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS` (i.e., it is treated as inline constants by default).
+If a Vulkan shader's SPIR-V contains a push-constant block (storage class `PushConstant`, often a `PushConstantsBlock`), Diligent reflects it as a constant-buffer-like resource with `PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS` (i.e., it is treated as inline constants by default).
 
 In practice, this means you should declare a matching inline-constant resource in your PRS and update it via `SetInlineConstants()` just like any other inline constants variable.
 
@@ -91,7 +92,7 @@ RefCntAutoPtr<IShaderResourceBinding> pSRB;
 pPRS->CreateShaderResourceBinding(&pSRB, /*InitStaticResources*/ true);
 ```
 
-Note: updates to the signature’s static cache after SRB creation do not affect existing SRBs; use the SRB variable for per-frame/per-draw updates.
+Note: updates to the signature's static cache after SRB creation do not affect existing SRBs; use the SRB variable for per-frame/per-draw updates.
 
 ### 4.2 The most common mistake: units are 32-bit constants
 
@@ -113,13 +114,13 @@ Inline constants follow the same PRS/SRB caching rules as other resources.
 
 ### STATIC variables
 
-- `pPRS->GetStaticVariableByName(...)->SetInlineConstants(...)` updates the **signature’s static cache**.
+- `pPRS->GetStaticVariableByName(...)->SetInlineConstants(...)` updates the **signature's static cache**.
 - The static cache is copied into an SRB only during SRB creation when `InitStaticResources=true`.
-- Updating the signature’s static cache after an SRB is created does **not** retroactively update existing SRBs.
+- Updating the signature's static cache after an SRB is created does **not** retroactively update existing SRBs.
 
 ### MUTABLE / DYNAMIC variables
 
-- `pSRB->GetVariableByName(...)->SetInlineConstants(...)` updates the **SRB’s own cache**.
+- `pSRB->GetVariableByName(...)->SetInlineConstants(...)` updates the **SRB's own cache**.
 - Use this for per-frame/per-draw updates.
 
 Recommended rule of thumb:

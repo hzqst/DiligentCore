@@ -40,7 +40,7 @@ D3D11 uses the following model:
 - For each inline-constant resource, the signature creates an internal `USAGE_DYNAMIC` constant buffer.
 - All SRBs created from the same signature share this same buffer object.
 
-At draw/dispatch time, the backend uploads the currently bound SRB’s staging data into the shared dynamic buffer and then binds it.
+At draw/dispatch time, the backend uploads the currently bound SRB's staging data into the shared dynamic buffer and then binds it.
 
 ---
 
@@ -72,7 +72,7 @@ Implementation:
   - `ShaderResourceCacheD3D11::Initialize(...)` allocates memory for inline constants and calls `InitInlineConstantBuffer(...)`
   - `ShaderResourceCacheD3D11::InitInlineConstantBuffer(...)` assigns:
     - `CachedCB::pBuff` (the shared `BufferD3D11Impl`)
-    - `CachedCB::pInlineConstantData` (the SRB’s staging pointer)
+    - `CachedCB::pInlineConstantData` (the SRB's staging pointer)
     - and uses the same staging pointer for all active shader stages of that resource
 
 ---
