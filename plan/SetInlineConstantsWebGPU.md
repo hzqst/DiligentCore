@@ -1,5 +1,8 @@
 # SetInlineConstants (WebGPU, buffer-emulated) Build Plan
 
+## Upstream Sync
+- Git commit: `7d4a53f47d7a93914e9efc6aab6a3c3c9c23a149` (`Enable SetInlineConstants for WebGPU`)
+
 ## Goals
 - Implement **buffer-emulated** `SetInlineConstants` for the WebGPU backend.
 - Match D3D11 / OpenGL behavior 1:1 (signature-owned shared buffer, per-SRB CPU staging, update on commit).
@@ -183,18 +186,22 @@ if (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
    - `GetRequiredMemorySize()` - add `Uint32 TotalInlineConstants` parameter
    - `InitializeGroups()` - add `Uint32 TotalInlineConstants` parameter
 5. Update memory allocation to include staging tail: `MemSize += TotalInlineConstants * sizeof(Uint32)`
+6. Extend `InitializeResources()` to accept inline-constant offsets and initialize `Resource::pInlineConstantData` to point into the staging tail
 
 **New Methods**
 ```cpp
 void InitInlineConstantBuffer(Uint32 BindGroupIdx, Uint32 CacheOffset,
-                              BufferWebGPUImpl* pBuffer, Uint32 NumConstants,
+                              IDeviceObject* pBuffer, Uint32 NumConstants,
                               Uint32 InlineConstantOffset);
 
 void SetInlineConstants(Uint32 BindGroupIdx, Uint32 CacheOffset,
                         const void* pConstants, Uint32 FirstConstant, Uint32 NumConstants);
 
 void CopyInlineConstants(const ShaderResourceCacheWebGPU& SrcCache,
-                         Uint32 BindGroupIdx, Uint32 CacheOffset, Uint32 NumConstants);
+                         Uint32 BindGroupIdx,
+                         Uint32 SrcCacheOffset,
+                         Uint32 DstCacheOffset,
+                         Uint32 NumConstants);
 ```
 
 **CRITICAL: SetInlineConstants must NOT call UpdateRevision()**
@@ -257,7 +264,7 @@ void PipelineResourceSignatureWebGPUImpl::InitSRBResourceCache(ShaderResourceCac
 
 **Static Cache Initialization**
 - Only allocate staging space for **static variable type** inline constants
-- Use `StaticInlineConstants` (not `m_TotalInlineConstants`) to avoid "cache offset out of range" errors
+- Use `TotalStaticInlineConstants` (not `m_TotalInlineConstants`) to avoid "cache offset out of range" errors
 
 **Reference (OpenGL)**
 - `Graphics/GraphicsEngineOpenGL/src/PipelineResourceSignatureGLImpl.cpp` (`InitSRBResourceCache`, Step 4.5 in GL plan)
@@ -330,23 +337,23 @@ void PipelineResourceSignatureWebGPUImpl::UpdateInlineConstantBuffers(
         const ShaderResourceCacheWebGPU::Resource& CachedRes =
             Group.GetResource(InlineAttrib.CacheOffset);
 
-        // Get buffer from SRB cache (same buffer that was bound by BindResources)
+        // Get buffer from SRB cache (same buffer that was bound by InitInlineConstantBuffer)
         BufferWebGPUImpl* pBuffer = CachedRes.pObject.RawPtr<BufferWebGPUImpl>();
         VERIFY(pBuffer != nullptr, "Inline constant buffer is null in SRB cache");
 
         const Uint32 DataSize = InlineAttrib.NumConstants * sizeof(Uint32);
 
-        // Update the buffer from SRB cache - no re-binding needed
+        // Update the buffer from SRB cache staging data - no re-binding needed
         PVoid pMappedData = nullptr;
-        pBuffer->Map(pCtx, MAP_WRITE, MAP_FLAG_DISCARD, pMappedData);
+        pCtx->MapBuffer(pBuffer, MAP_WRITE, MAP_FLAG_DISCARD, pMappedData);
         memcpy(pMappedData, CachedRes.pInlineConstantData, DataSize);
-        pBuffer->Unmap(pCtx, MAP_WRITE);
+        pCtx->UnmapBuffer(pBuffer, MAP_WRITE);
     }
 }
 ```
 
 **Design Principle**: The buffer that is bound should be the same buffer that is updated.
-- `BindResources()` binds buffers from SRB cache
+- `InitInlineConstantBuffer()` binds buffers into SRB cache
 - `UpdateInlineConstantBuffers()` updates buffers from SRB cache
 - The signature's `InlineAttrib.pBuffer` is only used during SRB initialization to populate the cache
 
@@ -383,8 +390,9 @@ if (ResDesc.Flags & PIPELINE_RESOURCE_FLAG_INLINE_CONSTANTS)
     // Copy inline constant staging data from signature cache to SRB cache
     DstResourceCache.CopyInlineConstants(
         SrcResourceCache,
-        ResAttr.BindGroup,
-        ResAttr.SRBCacheOffset,
+        StaticGroupIdx,
+        Attr.CacheOffset(SrcCacheType),
+        Attr.CacheOffset(DstCacheType),
         ResDesc.ArraySize);
 }
 else
@@ -427,6 +435,14 @@ if (!pDevice->GetDeviceInfo().IsD3DDevice() &&
     GTEST_SKIP() << "Inline constants are not supported by this device";
 }
 ```
+
+**Other test updates in this commit**
+- Add `#include "MapHelper.hpp"` to allocate dynamic space in Vulkan (ensures dynamic offset is non-zero in `CrossSignatureSRB`)
+- `CrossSignatureSRB`:
+  - Use distinct signature names (`"Cross-Signature Test 1"` / `"Cross-Signature Test 2"`) and verify `pSign1 != pSign2`
+  - Move `CommitShaderResources()` before any `SetInlineConstants()` calls to validate the “set-after-commit” semantics
+  - Split position constants update into two partial updates + two draws to validate partial update path
+- `RenderStateCache`: treat WebGPU like Vulkan for hash consistency (mark `PresentInCache = true` for WebGPU)
 
 **Test Coverage**
 - `InlineConstants.ResourceLayout` - Basic functionality
