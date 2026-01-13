@@ -445,7 +445,12 @@ void DeviceContextWebGPUImpl::MultiDrawIndexed(const MultiDrawIndexedAttribs& At
     TDeviceContextBase::MultiDrawIndexed(Attribs, 0);
 
     if (Attribs.NumInstances == 0)
+    {
+#ifdef DILIGENT_DEVELOPMENT
+        DvpValidateCommittedShaderResources();
+#endif
         return;
+    }
 
     WGPURenderPassEncoder wgpuRenderCmdEncoder = PrepareForIndexedDraw(Attribs.Flags, Attribs.IndexType);
     for (Uint32 DrawIdx = 0; DrawIdx < Attribs.DrawCount; ++DrawIdx)
