@@ -131,5 +131,3 @@ python ./BuildTools/.NET/dotnet-build-package.py -c Debug -d ./
 ## Important Notes
 
 - Copyright date needs to be updated if we apply changes to source/header files.
-- Always ` cmd /c "cd /d d:\DiligentCore\BuildTools\FormatValidation && validate_format_win.bat" ` after finishing code modification, to verify the codebase after finishing each step. Make sure the formatting validation succeeds. If any formatting issues are found, follow `clang-format`'s advice to fix them.
-- Use *serena* to explore the code base.
