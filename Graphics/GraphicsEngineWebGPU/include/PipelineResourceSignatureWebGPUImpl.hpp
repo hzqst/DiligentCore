@@ -1,5 +1,5 @@
 /*
- *  Copyright 2023-2024 Diligent Graphics LLC
+ *  Copyright 2023-2026 Diligent Graphics LLC
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -50,6 +50,20 @@ namespace Diligent
 
 struct WGSLShaderResourceAttribs;
 class DeviceContextWebGPUImpl;
+class BufferWebGPUImpl;
+
+/// Inline constant buffer attributes for WebGPU backend.
+/// Similar to Vulkan's InlineConstantBufferAttribsVk.
+struct InlineConstantBufferAttribsWebGPU
+{
+    Uint32 BindGroup    = 0; // Bind group index (similar to Vulkan's DescrSet)
+    Uint32 CacheOffset  = 0; // Offset within bind group (similar to Vulkan's SRBCacheOffset)
+    Uint32 NumConstants = 0; // Number of 32-bit constants (= ResDesc.ArraySize)
+
+    // Shared dynamic UBO created in the Signature.
+    // All SRBs reference this same buffer to reduce memory usage.
+    RefCntAutoPtr<BufferWebGPUImpl> pBuffer;
+};
 
 struct ImmutableSamplerAttribsWebGPU
 {
@@ -132,6 +146,11 @@ public:
     // Make the base class method visible
     using TPipelineResourceSignatureBase::CopyStaticResources;
 
+    // Updates inline constant buffers before draw/dispatch.
+    // Must be called when SRB is stale or DRAW_FLAG_INLINE_CONSTANTS_INTACT is not set.
+    void UpdateInlineConstantBuffers(const ShaderResourceCacheWebGPU& ResourceCache,
+                                     DeviceContextWebGPUImpl*         pCtx) const;
+
     // Returns the bind group index in the resource cache
     template <BIND_GROUP_ID GroupId>
     Uint32 GetBindGroupIndex() const;
@@ -198,6 +217,13 @@ private:
     // The total number storage buffers with dynamic offsets in both bind groups,
     // accounting for array size.
     Uint16 m_DynamicStorageBufferCount = 0;
+
+    // Number of inline constant buffers in this signature
+    Uint16 m_NumInlineConstantBuffers = 0;
+    // Total number of 32-bit inline constants across all inline constant buffers
+    Uint16 m_TotalInlineConstants = 0;
+    // Inline constant buffer attributes array
+    std::unique_ptr<InlineConstantBufferAttribsWebGPU[]> m_InlineConstantBuffers;
 };
 
 template <> Uint32 PipelineResourceSignatureWebGPUImpl::GetBindGroupIndex<PipelineResourceSignatureWebGPUImpl::BIND_GROUP_ID_STATIC_MUTABLE>() const;

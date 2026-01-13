@@ -218,7 +218,7 @@ void SetBindGroup(WGPUComputePassEncoder Encoder, uint32_t GroupIndex, WGPUBindG
 }
 
 template <typename CmdEncoderType>
-void DeviceContextWebGPUImpl::CommitBindGroups(CmdEncoderType CmdEncoder, Uint32 CommitSRBMask)
+void DeviceContextWebGPUImpl::CommitBindGroups(CmdEncoderType CmdEncoder, Uint32 CommitSRBMask, bool InlineConstantsIntact)
 {
     VERIFY(CommitSRBMask != 0, "This method should not be called when there is nothing to commit");
 
@@ -232,6 +232,25 @@ void DeviceContextWebGPUImpl::CommitBindGroups(CmdEncoderType CmdEncoder, Uint32
         if ((CommitSRBMask & SRBBit) == 0)
             continue;
 
+        const ShaderResourceCacheWebGPU* ResourceCache = m_BindInfo.ResourceCaches[sign];
+        VERIFY_EXPR(ResourceCache != nullptr);
+
+        // Update inline constant buffers if needed
+        const bool SRBStale = (m_BindInfo.StaleSRBMask & SRBBit) != 0;
+        if ((m_BindInfo.InlineConstantsSRBMask & SRBBit) != 0)
+        {
+            VERIFY(ResourceCache->HasInlineConstants(),
+                   "Shader resource cache does not contain inline constants, but the corresponding bit in InlineConstantsSRBMask is set.");
+            // Update inline constant buffers if the SRB is stale or inline constants have changed
+            if (SRBStale || !InlineConstantsIntact)
+            {
+                if (PipelineResourceSignatureWebGPUImpl* pSign = m_pPipelineState->GetResourceSignature(sign))
+                {
+                    pSign->UpdateInlineConstantBuffers(*ResourceCache, this);
+                }
+            }
+        }
+
         Uint32 BindGroupCacheIndex = 0;
         for (PipelineResourceSignatureWebGPUImpl::BIND_GROUP_ID BindGroupId : {PipelineResourceSignatureWebGPUImpl::BIND_GROUP_ID_STATIC_MUTABLE,
                                                                                PipelineResourceSignatureWebGPUImpl::BIND_GROUP_ID_DYNAMIC})
@@ -240,8 +259,6 @@ void DeviceContextWebGPUImpl::CommitBindGroups(CmdEncoderType CmdEncoder, Uint32
             if (!BindGroup.IsActive())
                 continue;
 
-            const ShaderResourceCacheWebGPU* ResourceCache = m_BindInfo.ResourceCaches[sign];
-            VERIFY_EXPR(ResourceCache != nullptr);
             bool DynamicOffsetsChanged = false;
             if (!BindGroup.DynamicBufferOffsets.empty())
             {
@@ -249,7 +266,7 @@ void DeviceContextWebGPUImpl::CommitBindGroups(CmdEncoderType CmdEncoder, Uint32
             }
             ++BindGroupCacheIndex;
 
-            if ((m_BindInfo.StaleSRBMask & SRBBit) == 0 && !DynamicOffsetsChanged)
+            if (!SRBStale && !DynamicOffsetsChanged)
             {
                 continue;
             }
@@ -379,10 +396,6 @@ void DeviceContextWebGPUImpl::Draw(const DrawAttribs& Attribs)
 {
     TDeviceContextBase::Draw(Attribs, 0);
 
-#ifdef DILIGENT_DEVELOPMENT
-    DvpValidateCommittedShaderResources();
-#endif
-
     if (Attribs.NumVertices == 0 || Attribs.NumInstances == 0)
         return;
 
@@ -393,10 +406,6 @@ void DeviceContextWebGPUImpl::Draw(const DrawAttribs& Attribs)
 void DeviceContextWebGPUImpl::MultiDraw(const MultiDrawAttribs& Attribs)
 {
     TDeviceContextBase::MultiDraw(Attribs, 0);
-
-#ifdef DILIGENT_DEVELOPMENT
-    DvpValidateCommittedShaderResources();
-#endif
 
     if (Attribs.NumInstances == 0)
         return;
@@ -414,10 +423,6 @@ void DeviceContextWebGPUImpl::DrawIndexed(const DrawIndexedAttribs& Attribs)
 {
     TDeviceContextBase::DrawIndexed(Attribs, 0);
 
-#ifdef DILIGENT_DEVELOPMENT
-    DvpValidateCommittedShaderResources();
-#endif
-
     if (Attribs.NumIndices == 0 || Attribs.NumInstances == 0)
         return;
 
@@ -428,10 +433,6 @@ void DeviceContextWebGPUImpl::DrawIndexed(const DrawIndexedAttribs& Attribs)
 void DeviceContextWebGPUImpl::MultiDrawIndexed(const MultiDrawIndexedAttribs& Attribs)
 {
     TDeviceContextBase::MultiDrawIndexed(Attribs, 0);
-
-#ifdef DILIGENT_DEVELOPMENT
-    DvpValidateCommittedShaderResources();
-#endif
 
     if (Attribs.NumInstances == 0)
         return;
@@ -449,15 +450,15 @@ void DeviceContextWebGPUImpl::DrawIndirect(const DrawIndirectAttribs& Attribs)
 {
     TDeviceContextBase::DrawIndirect(Attribs, 0);
 
+    WGPURenderPassEncoder wgpuRenderCmdEncoder = PrepareForDraw(Attribs.Flags);
+
 #ifdef DILIGENT_DEVELOPMENT
-    DvpValidateCommittedShaderResources();
     if (Attribs.pAttribsBuffer->GetDesc().Usage == USAGE_DYNAMIC)
         DvpVerifyDynamicAllocation(ClassPtrCast<BufferWebGPUImpl>(Attribs.pAttribsBuffer));
 #endif
 
-    WGPURenderPassEncoder wgpuRenderCmdEncoder = PrepareForDraw(Attribs.Flags);
-    Uint64                IndirectBufferOffset = Attribs.DrawArgsOffset;
-    WGPUBuffer            wgpuIndirectBuffer   = PrepareForIndirectCommand(Attribs.pAttribsBuffer, IndirectBufferOffset);
+    Uint64     IndirectBufferOffset = Attribs.DrawArgsOffset;
+    WGPUBuffer wgpuIndirectBuffer   = PrepareForIndirectCommand(Attribs.pAttribsBuffer, IndirectBufferOffset);
 
     for (Uint32 DrawIdx = 0; DrawIdx < Attribs.DrawCount; ++DrawIdx)
     {
@@ -470,15 +471,15 @@ void DeviceContextWebGPUImpl::DrawIndexedIndirect(const DrawIndexedIndirectAttri
 {
     TDeviceContextBase::DrawIndexedIndirect(Attribs, 0);
 
+    WGPURenderPassEncoder wgpuRenderCmdEncoder = PrepareForIndexedDraw(Attribs.Flags, Attribs.IndexType);
+
 #ifdef DILIGENT_DEVELOPMENT
-    DvpValidateCommittedShaderResources();
     if (Attribs.pAttribsBuffer->GetDesc().Usage == USAGE_DYNAMIC)
         DvpVerifyDynamicAllocation(ClassPtrCast<BufferWebGPUImpl>(Attribs.pAttribsBuffer));
 #endif
 
-    WGPURenderPassEncoder wgpuRenderCmdEncoder = PrepareForIndexedDraw(Attribs.Flags, Attribs.IndexType);
-    Uint64                IndirectBufferOffset = Attribs.DrawArgsOffset;
-    WGPUBuffer            wgpuIndirectBuffer   = PrepareForIndirectCommand(Attribs.pAttribsBuffer, IndirectBufferOffset);
+    Uint64     IndirectBufferOffset = Attribs.DrawArgsOffset;
+    WGPUBuffer wgpuIndirectBuffer   = PrepareForIndirectCommand(Attribs.pAttribsBuffer, IndirectBufferOffset);
 
     for (Uint32 DrawIdx = 0; DrawIdx < Attribs.DrawCount; ++DrawIdx)
     {
@@ -501,10 +502,6 @@ void DeviceContextWebGPUImpl::DispatchCompute(const DispatchComputeAttribs& Attr
 {
     TDeviceContextBase::DispatchCompute(Attribs, 0);
 
-#ifdef DILIGENT_DEVELOPMENT
-    DvpValidateCommittedShaderResources();
-#endif
-
     if (Attribs.ThreadGroupCountX == 0 || Attribs.ThreadGroupCountY == 0 || Attribs.ThreadGroupCountZ == 0)
         return;
 
@@ -516,15 +513,15 @@ void DeviceContextWebGPUImpl::DispatchComputeIndirect(const DispatchComputeIndir
 {
     TDeviceContextBase::DispatchComputeIndirect(Attribs, 0);
 
+    WGPUComputePassEncoder wgpuComputeCmdEncoder = PrepareForDispatchCompute();
+
 #ifdef DILIGENT_DEVELOPMENT
-    DvpValidateCommittedShaderResources();
     if (Attribs.pAttribsBuffer->GetDesc().Usage == USAGE_DYNAMIC)
         DvpVerifyDynamicAllocation(ClassPtrCast<BufferWebGPUImpl>(Attribs.pAttribsBuffer));
 #endif
 
-    WGPUComputePassEncoder wgpuComputeCmdEncoder = PrepareForDispatchCompute();
-    Uint64                 IndirectBufferOffset  = Attribs.DispatchArgsByteOffset;
-    WGPUBuffer             wgpuIndirectBuffer    = PrepareForIndirectCommand(Attribs.pAttribsBuffer, IndirectBufferOffset);
+    Uint64     IndirectBufferOffset = Attribs.DispatchArgsByteOffset;
+    WGPUBuffer wgpuIndirectBuffer   = PrepareForIndirectCommand(Attribs.pAttribsBuffer, IndirectBufferOffset);
 
     wgpuComputePassEncoderDispatchWorkgroupsIndirect(wgpuComputeCmdEncoder, wgpuIndirectBuffer, IndirectBufferOffset);
 }
@@ -2098,7 +2095,12 @@ WGPURenderPassEncoder DeviceContextWebGPUImpl::PrepareForDraw(DRAW_FLAGS Flags)
     }
 
     if (CommittedShaderResources::SRBMaskType CommitSRBMask = m_BindInfo.GetCommitMask(Flags & DRAW_FLAG_DYNAMIC_RESOURCE_BUFFERS_INTACT, Flags & DRAW_FLAG_INLINE_CONSTANTS_INTACT))
-        CommitBindGroups(wgpuRenderCmdEncoder, CommitSRBMask);
+        CommitBindGroups(wgpuRenderCmdEncoder, CommitSRBMask, (Flags & DRAW_FLAG_INLINE_CONSTANTS_INTACT) != 0);
+
+#ifdef DILIGENT_DEVELOPMENT
+    // Must be called after CommitBindGroups as inline constant buffers must be updated first
+    DvpValidateCommittedShaderResources();
+#endif
 
     return wgpuRenderCmdEncoder;
 }
@@ -2126,6 +2128,11 @@ WGPUComputePassEncoder DeviceContextWebGPUImpl::PrepareForDispatchCompute()
 
     if (CommittedShaderResources::SRBMaskType CommitSRBMask = m_BindInfo.GetCommitMask())
         CommitBindGroups(wgpuComputeCmdEncoder, CommitSRBMask);
+
+#ifdef DILIGENT_DEVELOPMENT
+    // Must be called after CommitBindGroups as inline constant buffers must be updated first
+    DvpValidateCommittedShaderResources();
+#endif
 
     return wgpuComputeCmdEncoder;
 }
