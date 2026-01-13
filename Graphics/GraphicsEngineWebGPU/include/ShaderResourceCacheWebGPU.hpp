@@ -253,13 +253,10 @@ private:
 
 public:
     // Initializes an inline constant buffer resource in the cache
-    void InitInlineConstantBuffer(Uint32 BindGroupIdx, Uint32 CacheOffset,
-                                  IDeviceObject* pBuffer, Uint32 NumConstants,
-                                  Uint32 InlineConstantOffset);
+    void InitInlineConstantBuffer(Uint32 BindGroupIdx, Uint32 CacheOffset, IDeviceObject* pBuffer, Uint32 NumConstants, Uint32 InlineConstantOffset);
 
     // Writes inline constant data to the staging buffer
-    void SetInlineConstants(Uint32 BindGroupIdx, Uint32 CacheOffset,
-                            const void* pConstants, Uint32 FirstConstant, Uint32 NumConstants);
+    void SetInlineConstants(Uint32 BindGroupIdx, Uint32 CacheOffset, const void* pConstants, Uint32 FirstConstant, Uint32 NumConstants);
 
     // Copies inline constant data from source cache to this cache
     void CopyInlineConstants(const ShaderResourceCacheWebGPU& SrcCache,
@@ -269,7 +266,6 @@ public:
                              Uint32                           NumConstants);
 
 private:
-
 #ifdef DILIGENT_DEBUG
     // Debug array that stores flags indicating if resources in the cache have been initialized
     std::vector<std::vector<bool>> m_DbgInitializedResources;

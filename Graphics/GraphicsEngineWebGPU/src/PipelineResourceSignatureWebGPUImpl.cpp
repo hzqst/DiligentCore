@@ -622,10 +622,10 @@ void PipelineResourceSignatureWebGPUImpl::CreateBindGroupLayouts(const bool IsSe
             {
                 VERIFY_EXPR(InlineConstantBufferIdx < m_NumInlineConstantBuffers);
                 InlineConstantBufferAttribsWebGPU& InlineAttrib = m_InlineConstantBuffers[InlineConstantBufferIdx++];
-                InlineAttrib.BindGroup    = BindGroupIndex;
-                InlineAttrib.CacheOffset  = CacheOffset;
-                InlineAttrib.NumConstants = ResDesc.ArraySize; // ArraySize is the number of 32-bit constants for inline constants
-                InlineAttrib.pBuffer      = CreateInlineConstantBuffer(ResDesc.Name, ResDesc.ArraySize);
+                InlineAttrib.BindGroup                          = BindGroupIndex;
+                InlineAttrib.CacheOffset                        = CacheOffset;
+                InlineAttrib.NumConstants                       = ResDesc.ArraySize; // ArraySize is the number of 32-bit constants for inline constants
+                InlineAttrib.pBuffer                            = CreateInlineConstantBuffer(ResDesc.Name, ResDesc.ArraySize);
                 m_TotalInlineConstants += static_cast<Uint16>(ResDesc.ArraySize);
             }
 
@@ -940,7 +940,7 @@ Uint32 PipelineResourceSignatureWebGPUImpl::GetBindGroupIndex<PipelineResourceSi
 }
 
 void PipelineResourceSignatureWebGPUImpl::UpdateInlineConstantBuffers(const ShaderResourceCacheWebGPU& ResourceCache,
-                                                                       DeviceContextWebGPUImpl*         pCtx) const
+                                                                      DeviceContextWebGPUImpl*         pCtx) const
 {
     for (Uint32 i = 0; i < m_NumInlineConstantBuffers; ++i)
     {

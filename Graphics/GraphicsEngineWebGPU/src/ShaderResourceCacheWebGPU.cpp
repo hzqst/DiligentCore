@@ -603,10 +603,10 @@ void ShaderResourceCacheWebGPU::DbgVerifyDynamicBuffersCounter() const
 #endif
 
 void ShaderResourceCacheWebGPU::InitInlineConstantBuffer(Uint32         BindGroupIdx,
-                                                          Uint32         CacheOffset,
-                                                          IDeviceObject* pBuffer,
-                                                          Uint32         NumConstants,
-                                                          Uint32         InlineConstantOffset)
+                                                         Uint32         CacheOffset,
+                                                         IDeviceObject* pBuffer,
+                                                         Uint32         NumConstants,
+                                                         Uint32         InlineConstantOffset)
 {
     VERIFY_EXPR(m_HasInlineConstants);
     VERIFY_EXPR(m_pInlineConstantData != nullptr);
@@ -628,10 +628,10 @@ void ShaderResourceCacheWebGPU::InitInlineConstantBuffer(Uint32         BindGrou
 }
 
 void ShaderResourceCacheWebGPU::SetInlineConstants(Uint32      BindGroupIdx,
-                                                    Uint32      CacheOffset,
-                                                    const void* pConstants,
-                                                    Uint32      FirstConstant,
-                                                    Uint32      NumConstants)
+                                                   Uint32      CacheOffset,
+                                                   const void* pConstants,
+                                                   Uint32      FirstConstant,
+                                                   Uint32      NumConstants)
 {
     BindGroup& Group = GetBindGroup(BindGroupIdx);
     Resource&  Res   = Group.GetResource(CacheOffset);
@@ -645,10 +645,10 @@ void ShaderResourceCacheWebGPU::SetInlineConstants(Uint32      BindGroupIdx,
 }
 
 void ShaderResourceCacheWebGPU::CopyInlineConstants(const ShaderResourceCacheWebGPU& SrcCache,
-                                                     Uint32                           BindGroupIdx,
-                                                     Uint32                           SrcCacheOffset,
-                                                     Uint32                           DstCacheOffset,
-                                                     Uint32                           NumConstants)
+                                                    Uint32                           BindGroupIdx,
+                                                    Uint32                           SrcCacheOffset,
+                                                    Uint32                           DstCacheOffset,
+                                                    Uint32                           NumConstants)
 {
     const BindGroup& SrcGroup = SrcCache.GetBindGroup(BindGroupIdx);
     const Resource&  SrcRes   = SrcGroup.GetResource(SrcCacheOffset);
