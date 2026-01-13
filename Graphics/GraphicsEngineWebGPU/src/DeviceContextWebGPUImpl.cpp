@@ -397,7 +397,12 @@ void DeviceContextWebGPUImpl::Draw(const DrawAttribs& Attribs)
     TDeviceContextBase::Draw(Attribs, 0);
 
     if (Attribs.NumVertices == 0 || Attribs.NumInstances == 0)
+    {
+#ifdef DILIGENT_DEVELOPMENT
+        DvpValidateCommittedShaderResources();
+#endif
         return;
+    }
 
     WGPURenderPassEncoder wgpuRenderCmdEncoder = PrepareForDraw(Attribs.Flags);
     wgpuRenderPassEncoderDraw(wgpuRenderCmdEncoder, Attribs.NumVertices, Attribs.NumInstances, Attribs.StartVertexLocation, Attribs.FirstInstanceLocation);
@@ -424,7 +429,12 @@ void DeviceContextWebGPUImpl::DrawIndexed(const DrawIndexedAttribs& Attribs)
     TDeviceContextBase::DrawIndexed(Attribs, 0);
 
     if (Attribs.NumIndices == 0 || Attribs.NumInstances == 0)
+    {
+#ifdef DILIGENT_DEVELOPMENT
+        DvpValidateCommittedShaderResources();
+#endif
         return;
+    }
 
     WGPURenderPassEncoder wgpuRenderCmdEncoder = PrepareForIndexedDraw(Attribs.Flags, Attribs.IndexType);
     wgpuRenderPassEncoderDrawIndexed(wgpuRenderCmdEncoder, Attribs.NumIndices, Attribs.NumInstances, Attribs.FirstIndexLocation, Attribs.BaseVertex, Attribs.FirstInstanceLocation);
@@ -503,7 +513,12 @@ void DeviceContextWebGPUImpl::DispatchCompute(const DispatchComputeAttribs& Attr
     TDeviceContextBase::DispatchCompute(Attribs, 0);
 
     if (Attribs.ThreadGroupCountX == 0 || Attribs.ThreadGroupCountY == 0 || Attribs.ThreadGroupCountZ == 0)
+    {
+#ifdef DILIGENT_DEVELOPMENT
+        DvpValidateCommittedShaderResources();
+#endif
         return;
+    }
 
     WGPUComputePassEncoder wgpuComputeCmdEncoder = PrepareForDispatchCompute();
     wgpuComputePassEncoderDispatchWorkgroups(wgpuComputeCmdEncoder, Attribs.ThreadGroupCountX, Attribs.ThreadGroupCountY, Attribs.ThreadGroupCountZ);
