@@ -413,7 +413,12 @@ void DeviceContextWebGPUImpl::MultiDraw(const MultiDrawAttribs& Attribs)
     TDeviceContextBase::MultiDraw(Attribs, 0);
 
     if (Attribs.NumInstances == 0)
+    {
+#ifdef DILIGENT_DEVELOPMENT
+        DvpValidateCommittedShaderResources();
+#endif
         return;
+    }
 
     WGPURenderPassEncoder wgpuRenderCmdEncoder = PrepareForDraw(Attribs.Flags);
     for (Uint32 DrawIdx = 0; DrawIdx < Attribs.DrawCount; ++DrawIdx)
