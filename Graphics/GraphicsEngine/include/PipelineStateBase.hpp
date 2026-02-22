@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -109,6 +109,12 @@ void ValidatePipelineResourceCompatibility(const PipelineResourceDesc& ResDesc,
                                            Uint32                      ArraySize,
                                            const char*                 ShaderName,
                                            const char*                 SignatureName) noexcept(false);
+
+/// Validates specialization constants in PSO create info and throws an exception in case of an error.
+void ValidateSpecializationConstants(const PipelineStateDesc&      PSODesc,
+                                     const DeviceFeatures&         Features,
+                                     Uint32                        NumSpecializationConstants,
+                                     const SpecializationConstant* pSpecializationConstants) noexcept(false);
 
 
 /// Copies ray tracing shader group names and also initializes the mapping from the group name to its index.
