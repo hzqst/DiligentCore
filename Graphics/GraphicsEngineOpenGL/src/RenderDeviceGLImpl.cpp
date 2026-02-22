@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -1129,7 +1129,7 @@ void RenderDeviceGLImpl::InitAdapterInfo()
         m_AdapterInfo.Queues[0].TextureCopyGranularity[2] = 1;
     }
 
-    ASSERT_SIZEOF(DeviceFeatures, 47, "Did you add a new feature to DeviceFeatures? Please handle its status here.");
+    ASSERT_SIZEOF(DeviceFeatures, 48, "Did you add a new feature to DeviceFeatures? Please handle its status here.");
 }
 
 void RenderDeviceGLImpl::FlagSupportedTexFormats()
