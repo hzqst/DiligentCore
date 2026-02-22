@@ -1160,7 +1160,7 @@ TEST(GraphicsTypesXTest, SpecializationConstants)
 
     // Test AddSpecializationConstant with StringPool (verifies deep copy of names and data)
     {
-        StringPool                     Pool;
+        StringPool                      Pool;
         ComputePipelineStateCreateInfoX DescX;
         DescX
             .AddSpecializationConstant({Pool("SC_Float"), SHADER_TYPE_VERTEX, sizeof(SpecConst1Value), &SpecConst1Value})
