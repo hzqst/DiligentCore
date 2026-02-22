@@ -93,7 +93,7 @@ Introduce a backend-agnostic API surface for specialization constants and add fe
 Implement full Vulkan specialization constants path by mapping names to SPIR-V `SpecId` and binding values into `VkPipelineShaderStageCreateInfo`.
 
 ### Work items
-1. **SPIR-V reflection extension (required)**
+1. **SPIR-V reflection for specialization constants**
    - Extend `SPIRVShaderResources` to expose specialization constants metadata:
      - constant name (`OpName`)
      - `SpecId`
@@ -101,7 +101,8 @@ Implement full Vulkan specialization constants path by mapping names to SPIR-V `
    - Candidate files:
      - `Graphics/ShaderTools/include/SPIRVShaderResources.hpp`
      - `Graphics/ShaderTools/src/SPIRVShaderResources.cpp`
-   - Use SPIRV-Cross specialization constant reflection (`get_specialization_constants` + name lookup).
+   - Use SPIRV-Cross specialization constant reflection (`Compiler.get_specialization_constants` + name lookup).
+   - Need to be tested in `Tests/DiligentCoreTest/src/ShaderTools/SPIRVShaderResourcesTest.cpp`
 
 2. **Name -> SpecId matching policy**
    - Match `SpecializationConstant::Name` to reflected specialization constant names from SPIR-V.
@@ -116,7 +117,7 @@ Implement full Vulkan specialization constants path by mapping names to SPIR-V `
    - In Vulkan pipeline state creation flow, build per-shader-module specialization data:
      - `std::vector<VkSpecializationMapEntry>`
      - contiguous data blob (`std::vector<Uint8>`)
-     - `VkSpecializationInfo`
+     - Populate `VkSpecializationInfo`
    - Attach `StageCI.pSpecializationInfo` for each `VkPipelineShaderStageCreateInfo`.
    - Ensure memory lifetime is valid until Vulkan `vkCreate*Pipelines` call returns.
    - Primary integration file:
