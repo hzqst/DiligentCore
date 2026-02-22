@@ -131,3 +131,41 @@ python ./BuildTools/.NET/dotnet-build-package.py -c Debug -d ./
 ## Important Notes
 
 - Copyright date needs to be updated if we apply changes to source/header files.
+
+## Serena Workflow and Progressive Disclosure
+
+### Serena Memories (Keep Context Lean)
+
+1. Use `list_memories` first to discover available project memories (do not read all memories by default).
+2. Use `read_memory` only for the specific memory files required by the current task.
+3. If memory content is missing, stale, or insufficient, switch to targeted repository reads or symbol/search-based lookup, then maintain memory quality with `write_memory`, `edit_memory`, or `delete_memory`.
+
+### High-Level Repository Information (Prefer Memories First)
+
+Keep the following topics in Serena memories and load them on demand:
+
+- Project purpose/background: `project_overview`
+- Tech stack: `tech_stack`
+- Directory and module structure: `project_structure`
+- Common development commands: `suggested_commands`
+- Code style and conventions: `code_style_conventions`
+- Development guidelines and caveats: `development_guidelines`
+- Post-task checklist: `task_completion_checklist`
+- Module-specific topics (for example, graphics backends or platform layers) as separate memory files when needed
+
+### Source-File Entry Points When Memories Are Insufficient (Read On Demand)
+
+- Project documentation: `README.md`, `ReleaseHistory.md`, `doc/`
+- Build and configuration entry points: `CMakeLists.txt`, `build-x64-Debug.bat`, `BuildTools/`, `Directory.Build.props`, `Directory.Packages.props`
+- Main implementation modules: `Graphics/`, `Platforms/`, `Primitives/`, `Common/`, `Tests/`
+- CI and automation: `.github/workflows/`, `appveyor.yml`
+- Large directories (avoid full scans): `ThirdParty/`, `build/`, `media/`
+
+### Progressive Disclosure Key Points
+
+- Start from memories, then narrow to single files/symbols; avoid scanning the whole repository at once.
+- For large or dependency-heavy areas, prefer targeted lookup over full-directory reads.
+
+### Startup Rule
+
+- Always run `activate_project` when the agent starts.
