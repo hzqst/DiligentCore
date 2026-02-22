@@ -1176,8 +1176,8 @@ TEST(GraphicsTypesXTest, SpecializationConstants)
 
     // Test AddSpecializationConstant deep-copies raw bytes.
     {
-        Uint8 MutableData[] = {10, 20, 30, 40, 50};
-        const Uint8 RefData[] = {10, 20, 30, 40, 50};
+        Uint8       MutableData[] = {10, 20, 30, 40, 50};
+        const Uint8 RefData[]     = {10, 20, 30, 40, 50};
 
         ComputePipelineStateCreateInfoX DescX;
         DescX.AddSpecializationConstant({"SC_Bytes", SHADER_TYPE_PIXEL, static_cast<Uint32>(_countof(MutableData)), MutableData});
@@ -1197,10 +1197,10 @@ TEST(GraphicsTypesXTest, SpecializationConstants)
 
     // Test create-info wrapper constructor deep-copies raw bytes.
     {
-        const Uint8 RefData[] = {1, 2, 3, 4};
+        const Uint8                     RefData[] = {1, 2, 3, 4};
         ComputePipelineStateCreateInfoX DescX;
         {
-            Uint8 MutableData[] = {1, 2, 3, 4};
+            Uint8                        MutableData[] = {1, 2, 3, 4};
             const SpecializationConstant SpecConst{
                 "SC_CtorBytes",
                 SHADER_TYPE_COMPUTE,
