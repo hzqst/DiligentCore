@@ -59,14 +59,22 @@ Introduce a backend-agnostic API surface for specialization constants and add fe
      - include per-entry `{Name, ShaderStages, Size, DataBytes}`.
    - Update serialization size asserts and tests.
 
-5. **Tests for stage 1**
-   - Update `Tests/DiligentCoreTest/src/GraphicsEngine/PSOSerializerTest.cpp` for round-trip with non-empty specialization constants.
+5. **Hash combiner update for render state cache**
+   - Update `HashCombiner<HasherType, PipelineStateCreateInfo>` in `Common/interface/HashUtils.hpp` to include `NumSpecializationConstants` and each entry's `{Name, ShaderStages, Size, DataBytes}` in the hash.
+   - Without this, the render state cache (`RenderStateCacheImpl`) cannot distinguish PSOs that differ only by specialization constants, since the PSO lookup key (`XXH128Hash`) would collide.
+
+6. **Tests for stage 1**
+   - ~~Update `Tests/DiligentCoreTest/src/GraphicsEngine/PSOSerializerTest.cpp` for round-trip with non-empty specialization constants.~~ **DONE**
    - Add API validation tests in `Tests/DiligentCoreTest/src/GraphicsEngine/` for each error path in `ValidateSpecializationConstants`:
      - null pointer with non-zero count
      - feature disabled rejection
      - null / empty `Name`, unknown `ShaderStages`, zero `Size`, null `pData`
      - duplicate `Name` with overlapping `ShaderStages`
    - Add `GraphicsTypesXTest` coverage for `AddSpecializationConstant`, `ClearSpecializationConstants`, copy construction, and move construction with specialization constants attached.
+   - Add render state cache tests (`Tests/DiligentCoreAPITest/src/RenderStateCacheTest.cpp`) that create PSOs with specialization constants:
+     - Verify that a PSO with spec constants can be cached and retrieved.
+     - Verify that PSOs with different spec constant values produce distinct cache entries (not hash collisions).
+     - Follow the existing `InlineConstants::RenderStateCache` pattern (3-pass: empty cache → loaded → reloaded).
 
 ### Exit criteria
 - API compiles for all backends.
@@ -75,6 +83,7 @@ Introduce a backend-agnostic API surface for specialization constants and add fe
 - Unsupported backends reject non-empty specialization constants with clear errors.
 - All `ValidateSpecializationConstants` error paths are covered by unit tests.
 - `PipelineStateCreateInfoX` deep-copy of specialization constants is verified by `GraphicsTypesXTest`.
+- Render state cache correctly handles PSOs with specialization constants (hash includes spec constants, cache round-trip works).
 
 ---
 
