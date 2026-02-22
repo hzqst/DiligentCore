@@ -1174,6 +1174,58 @@ TEST(GraphicsTypesXTest, SpecializationConstants)
         EXPECT_EQ(DescX, Ref);
     }
 
+    // Test AddSpecializationConstant deep-copies raw bytes.
+    {
+        Uint8 MutableData[] = {10, 20, 30, 40, 50};
+        const Uint8 RefData[] = {10, 20, 30, 40, 50};
+
+        ComputePipelineStateCreateInfoX DescX;
+        DescX.AddSpecializationConstant({"SC_Bytes", SHADER_TYPE_PIXEL, static_cast<Uint32>(_countof(MutableData)), MutableData});
+
+        for (auto& Byte : MutableData)
+            Byte = 0;
+
+        ASSERT_EQ(DescX.NumSpecializationConstants, 1u);
+        const auto& SpecConst = DescX.pSpecializationConstants[0];
+        ASSERT_NE(SpecConst.pData, nullptr);
+        EXPECT_EQ(SpecConst.Size, static_cast<Uint32>(_countof(RefData)));
+
+        const auto* pData = static_cast<const Uint8*>(SpecConst.pData);
+        for (size_t i = 0; i < _countof(RefData); ++i)
+            EXPECT_EQ(pData[i], RefData[i]);
+    }
+
+    // Test create-info wrapper constructor deep-copies raw bytes.
+    {
+        const Uint8 RefData[] = {1, 2, 3, 4};
+        ComputePipelineStateCreateInfoX DescX;
+        {
+            Uint8 MutableData[] = {1, 2, 3, 4};
+            const SpecializationConstant SpecConst{
+                "SC_CtorBytes",
+                SHADER_TYPE_COMPUTE,
+                static_cast<Uint32>(_countof(MutableData)),
+                MutableData};
+
+            ComputePipelineStateCreateInfo SrcCI;
+            SrcCI.NumSpecializationConstants = 1;
+            SrcCI.pSpecializationConstants   = &SpecConst;
+            DescX                            = ComputePipelineStateCreateInfoX{SrcCI};
+
+            for (auto& Byte : MutableData)
+                Byte = 0;
+        }
+
+        ASSERT_EQ(DescX.NumSpecializationConstants, 1u);
+        const auto& SpecConst = DescX.pSpecializationConstants[0];
+        ASSERT_NE(SpecConst.pData, nullptr);
+        EXPECT_EQ(SpecConst.Size, static_cast<Uint32>(_countof(RefData)));
+
+        const auto* pData = static_cast<const Uint8*>(SpecConst.pData);
+        for (size_t i = 0; i < _countof(RefData); ++i)
+            EXPECT_EQ(pData[i], RefData[i]);
+    }
+
     // Test ClearSpecializationConstants
     {
         ComputePipelineStateCreateInfoX DescX;

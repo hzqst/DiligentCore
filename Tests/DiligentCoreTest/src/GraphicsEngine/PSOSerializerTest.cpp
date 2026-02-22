@@ -306,6 +306,15 @@ static void TestSerializePSOCreateInfo(HelperType&& Helper)
 
         EXPECT_TRUE(RSer.IsEnded());
         EXPECT_EQ(SrcPSO, DstPSO);
+        if (SrcPSO.NumSpecializationConstants > 0)
+        {
+            ASSERT_NE(DstPSO.pSpecializationConstants, nullptr);
+            for (Uint32 i = 0; i < SrcPSO.NumSpecializationConstants; ++i)
+            {
+                EXPECT_STREQ(SrcPSO.pSpecializationConstants[i].Name, DstPSO.pSpecializationConstants[i].Name);
+                EXPECT_NE(SrcPSO.pSpecializationConstants[i].pData, DstPSO.pSpecializationConstants[i].pData);
+            }
+        }
 
         for (size_t i = 0; i < DstPRSNames.size(); ++i)
         {
