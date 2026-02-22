@@ -271,6 +271,21 @@ static void TestSerializePSOCreateInfo(HelperType&& Helper)
         for (Uint32 i = 0; i < SrcPSO.ResourceSignaturesCount; ++i)
             SrcPRSNames[i] = PRSNames[i].c_str();
 
+        const Uint32 SpecConstData0 = 0x12345678u;
+        const float  SpecConstData1 = 3.14f;
+        const Uint32 SpecConstData2 = 42u;
+
+        SpecializationConstant SpecConsts[] =
+            {
+                {"ConstA", SHADER_TYPE_VERTEX, sizeof(SpecConstData0), &SpecConstData0},
+                {"ConstB", SHADER_TYPE_PIXEL, sizeof(SpecConstData1), &SpecConstData1},
+                {"ConstC", SHADER_TYPE_GEOMETRY, sizeof(SpecConstData2), &SpecConstData2} //
+            };
+
+        SrcPSO.NumSpecializationConstants = Val(0u, _countof(SpecConsts));
+        if (SrcPSO.NumSpecializationConstants > 0)
+            SrcPSO.pSpecializationConstants = SpecConsts;
+
         Helper.Init(SrcPSO, Val);
 
         Serializer<SerializerMode::Measure> MSer;
