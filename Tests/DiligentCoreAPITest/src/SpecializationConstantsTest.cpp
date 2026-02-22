@@ -83,13 +83,13 @@ protected:
     static GraphicsPipelineStateCreateInfo GetDefaultPSOCI(const char* Name)
     {
         GraphicsPipelineStateCreateInfo PsoCI;
-        PsoCI.PSODesc.Name                             = Name;
-        PsoCI.pVS                                      = sm_pVS;
-        PsoCI.pPS                                      = sm_pPS;
-        PsoCI.GraphicsPipeline.PrimitiveTopology        = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-        PsoCI.GraphicsPipeline.NumRenderTargets         = 1;
-        PsoCI.GraphicsPipeline.RTVFormats[0]            = TEX_FORMAT_RGBA8_UNORM;
-        PsoCI.GraphicsPipeline.DSVFormat                = TEX_FORMAT_D32_FLOAT;
+        PsoCI.PSODesc.Name                       = Name;
+        PsoCI.pVS                                = sm_pVS;
+        PsoCI.pPS                                = sm_pPS;
+        PsoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        PsoCI.GraphicsPipeline.NumRenderTargets  = 1;
+        PsoCI.GraphicsPipeline.RTVFormats[0]     = TEX_FORMAT_RGBA8_UNORM;
+        PsoCI.GraphicsPipeline.DSVFormat         = TEX_FORMAT_D32_FLOAT;
         return PsoCI;
     }
 
@@ -128,7 +128,7 @@ RefCntAutoPtr<IShader> SpecializationConstantsTest::sm_pPS;
 
 TEST_F(SpecializationConstantsTest, NullPointerWithNonZeroCount)
 {
-    auto PsoCI = GetDefaultPSOCI("SpecConst - NullPointerWithNonZeroCount");
+    auto PsoCI                       = GetDefaultPSOCI("SpecConst - NullPointerWithNonZeroCount");
     PsoCI.NumSpecializationConstants = 1;
     PsoCI.pSpecializationConstants   = nullptr;
     TestCreatePSOFailure(PsoCI, "pSpecializationConstants is null");
@@ -146,7 +146,7 @@ TEST_F(SpecializationConstantsTest, FeatureDisabled)
         {"Constant0", SHADER_TYPE_VERTEX, sizeof(Data), &Data},
     };
 
-    auto PsoCI = GetDefaultPSOCI("SpecConst - FeatureDisabled");
+    auto PsoCI                       = GetDefaultPSOCI("SpecConst - FeatureDisabled");
     PsoCI.NumSpecializationConstants = _countof(SpecConsts);
     PsoCI.pSpecializationConstants   = SpecConsts;
     TestCreatePSOFailure(PsoCI, "SpecializationConstants device feature is not enabled");
@@ -164,7 +164,7 @@ TEST_F(SpecializationConstantsTest, NullName)
         {nullptr, SHADER_TYPE_VERTEX, sizeof(Data), &Data},
     };
 
-    auto PsoCI = GetDefaultPSOCI("SpecConst - NullName");
+    auto PsoCI                       = GetDefaultPSOCI("SpecConst - NullName");
     PsoCI.NumSpecializationConstants = _countof(SpecConsts);
     PsoCI.pSpecializationConstants   = SpecConsts;
     TestCreatePSOFailure(PsoCI, "Name must not be null");
@@ -182,7 +182,7 @@ TEST_F(SpecializationConstantsTest, EmptyName)
         {"", SHADER_TYPE_VERTEX, sizeof(Data), &Data},
     };
 
-    auto PsoCI = GetDefaultPSOCI("SpecConst - EmptyName");
+    auto PsoCI                       = GetDefaultPSOCI("SpecConst - EmptyName");
     PsoCI.NumSpecializationConstants = _countof(SpecConsts);
     PsoCI.pSpecializationConstants   = SpecConsts;
     TestCreatePSOFailure(PsoCI, "Name must not be empty");
@@ -200,7 +200,7 @@ TEST_F(SpecializationConstantsTest, UnknownShaderStages)
         {"Constant0", SHADER_TYPE_UNKNOWN, sizeof(Data), &Data},
     };
 
-    auto PsoCI = GetDefaultPSOCI("SpecConst - UnknownShaderStages");
+    auto PsoCI                       = GetDefaultPSOCI("SpecConst - UnknownShaderStages");
     PsoCI.NumSpecializationConstants = _countof(SpecConsts);
     PsoCI.pSpecializationConstants   = SpecConsts;
     TestCreatePSOFailure(PsoCI, "ShaderStages must not be SHADER_TYPE_UNKNOWN");
@@ -218,7 +218,7 @@ TEST_F(SpecializationConstantsTest, ZeroSize)
         {"Constant0", SHADER_TYPE_VERTEX, 0, &Data},
     };
 
-    auto PsoCI = GetDefaultPSOCI("SpecConst - ZeroSize");
+    auto PsoCI                       = GetDefaultPSOCI("SpecConst - ZeroSize");
     PsoCI.NumSpecializationConstants = _countof(SpecConsts);
     PsoCI.pSpecializationConstants   = SpecConsts;
     TestCreatePSOFailure(PsoCI, "Size must not be zero");
@@ -234,7 +234,7 @@ TEST_F(SpecializationConstantsTest, NullData)
         {"Constant0", SHADER_TYPE_VERTEX, sizeof(float), nullptr},
     };
 
-    auto PsoCI = GetDefaultPSOCI("SpecConst - NullData");
+    auto PsoCI                       = GetDefaultPSOCI("SpecConst - NullData");
     PsoCI.NumSpecializationConstants = _countof(SpecConsts);
     PsoCI.pSpecializationConstants   = SpecConsts;
     TestCreatePSOFailure(PsoCI, "pData must not be null");
@@ -253,7 +253,7 @@ TEST_F(SpecializationConstantsTest, DuplicateNameOverlappingStages)
         {"Constant0", SHADER_TYPE_VERTEX | SHADER_TYPE_GEOMETRY, sizeof(Data), &Data},
     };
 
-    auto PsoCI = GetDefaultPSOCI("SpecConst - DuplicateNameOverlappingStages");
+    auto PsoCI                       = GetDefaultPSOCI("SpecConst - DuplicateNameOverlappingStages");
     PsoCI.NumSpecializationConstants = _countof(SpecConsts);
     PsoCI.pSpecializationConstants   = SpecConsts;
     TestCreatePSOFailure(PsoCI, "is defined in overlapping shader stages");
@@ -273,7 +273,7 @@ TEST_F(SpecializationConstantsTest, ErrorAtSecondElement)
         {nullptr, SHADER_TYPE_PIXEL, sizeof(Data), &Data},
     };
 
-    auto PsoCI = GetDefaultPSOCI("SpecConst - ErrorAtSecondElement");
+    auto PsoCI                       = GetDefaultPSOCI("SpecConst - ErrorAtSecondElement");
     PsoCI.NumSpecializationConstants = _countof(SpecConsts);
     PsoCI.pSpecializationConstants   = SpecConsts;
     TestCreatePSOFailure(PsoCI, "pSpecializationConstants[1].Name must not be null");
