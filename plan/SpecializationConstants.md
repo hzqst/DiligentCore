@@ -27,8 +27,11 @@ Introduce a backend-agnostic API surface for specialization constants and add fe
    - Extend `PipelineStateCreateInfo` with:
      - `const SpecializationConstant* pSpecializationConstants`
      - `Uint32 NumSpecializationConstants`
-   - Add `SpecializationConstants` to `DeviceFeatures`
-
+   - Add `SpecializationConstants` to `DeviceFeatures` in `Graphics/GraphicsEngine/interface/GraphicsTypes.h`.
+   - Add `SpecializationConstants` to `ENUMERATE_DEVICE_FEATURES` and constructor initialization paths.
+   - Update all `ASSERT_SIZEOF(DeviceFeatures, 47, ...)` call sites to the new size.
+   - Wire feature enable/selection logic in `Graphics/GraphicsEngine/src/RenderDeviceBase.cpp` (`EnableDeviceFeatures`).
+   
 2. **API validation and behavior contract**
    - Add common validation in pipeline create-info validation path (`PipelineStateBase` validation):
      - pointer/count consistency (`Num == 0` <=> pointer may be null, `Num > 0` requires pointer non-null)
@@ -37,13 +40,7 @@ Introduce a backend-agnostic API surface for specialization constants and add fe
      - reject usage when `DeviceFeatures.SpecializationConstants == DEVICE_FEATURE_STATE_DISABLED`
    - Keep behavior deterministic across all PSO types (graphics/compute/ray tracing/tile where applicable).
 
-3. **Feature model update**
-   - Add `SpecializationConstants` to `DeviceFeatures` in `Graphics/GraphicsEngine/interface/GraphicsTypes.h`.
-   - Add it to `ENUMERATE_DEVICE_FEATURES` and constructor initialization paths.
-   - Update all `ASSERT_SIZEOF(DeviceFeatures, 47, ...)` call sites to the new size.
-   - Wire feature enable/selection logic in `Graphics/GraphicsEngine/src/RenderDeviceBase.cpp` (`EnableDeviceFeatures`).
-
-4. **Backend feature states**
+3. **Backend feature states**
    - Vulkan: set `Features.SpecializationConstants = ENABLED`.
    - WebGPU: set `Features.SpecializationConstants = ENABLED`.
    - D3D11 / D3D12 / OpenGL / Metal: set `DISABLED`.
@@ -55,14 +52,14 @@ Introduce a backend-agnostic API surface for specialization constants and add fe
      - `Graphics/GraphicsEngineOpenGL/src/RenderDeviceGLImpl.cpp`
      - `Graphics/GraphicsEngineVulkan/src/EngineFactoryVk.cpp` (size/assert sync)
 
-5. **Create-info lifetime, copy, and serialization**
+4. **Create-info lifetime, copy, and serialization**
    - Extend `PipelineStateCreateInfoX` wrapper in `Graphics/GraphicsEngine/interface/GraphicsTypesX.hpp` to deep-copy specialization constants (names + raw bytes) for async PSO creation safety.
    - Extend PSO serialization/deserialization for `PipelineStateCreateInfo`:
      - `Graphics/GraphicsEngine/src/PSOSerializer.cpp`
      - include per-entry `{Name, ShaderStages, Size, DataBytes}`.
    - Update serialization size asserts and tests.
 
-6. **Tests for stage 1**
+5. **Tests for stage 1**
    - Update `Tests/DiligentCoreTest/src/GraphicsEngine/PSOSerializerTest.cpp` for round-trip with non-empty specialization constants.
    - Add/extend API validation tests (invalid pointer/count/name/size/data, unsupported backend path).
 
