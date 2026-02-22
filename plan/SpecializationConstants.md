@@ -65,7 +65,7 @@ Introduce a backend-agnostic API surface for specialization constants and add fe
 
 6. **Tests for stage 1**
    - Update `Tests/DiligentCoreTest/src/GraphicsEngine/PSOSerializerTest.cpp` for round-trip with non-empty specialization constants.
-   - Add API validation tests in `Tests/DiligentCoreTest/src/GraphicsEngine/` for each error path in `ValidateSpecializationConstants`:
+   - Add API validation tests in `Tests/DiligentCoreAPITest/src/` for each error path about SpecializationConstants:
      - null pointer with non-zero count
      - feature disabled rejection
      - null / empty `Name`, unknown `ShaderStages`, zero `Size`, null `pData`
