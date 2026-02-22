@@ -110,13 +110,6 @@ void ValidatePipelineResourceCompatibility(const PipelineResourceDesc& ResDesc,
                                            const char*                 ShaderName,
                                            const char*                 SignatureName) noexcept(false);
 
-/// Validates specialization constants in PSO create info and throws an exception in case of an error.
-void ValidateSpecializationConstants(const PipelineStateDesc&      PSODesc,
-                                     const DeviceFeatures&         Features,
-                                     Uint32                        NumSpecializationConstants,
-                                     const SpecializationConstant* pSpecializationConstants) noexcept(false);
-
-
 /// Copies ray tracing shader group names and also initializes the mapping from the group name to its index.
 void CopyRTShaderGroupNames(std::unordered_map<HashMapStringKey, Uint32>& NameToGroupIndex,
                             const RayTracingPipelineStateCreateInfo&      CreateInfo,
