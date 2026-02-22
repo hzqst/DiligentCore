@@ -27,6 +27,7 @@ Introduce a backend-agnostic API surface for specialization constants and add fe
    - Extend `PipelineStateCreateInfo` with:
      - `const SpecializationConstant* pSpecializationConstants`
      - `Uint32 NumSpecializationConstants`
+   - Add `SpecializationConstants` to `DeviceFeatures`
 
 2. **API validation and behavior contract**
    - Add common validation in pipeline create-info validation path (`PipelineStateBase` validation):
