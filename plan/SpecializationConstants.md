@@ -61,13 +61,20 @@ Introduce a backend-agnostic API surface for specialization constants and add fe
 
 5. **Tests for stage 1**
    - Update `Tests/DiligentCoreTest/src/GraphicsEngine/PSOSerializerTest.cpp` for round-trip with non-empty specialization constants.
-   - Add/extend API validation tests (invalid pointer/count/name/size/data, unsupported backend path).
+   - Add API validation tests in `Tests/DiligentCoreTest/src/GraphicsEngine/` for each error path in `ValidateSpecializationConstants`:
+     - null pointer with non-zero count
+     - feature disabled rejection
+     - null / empty `Name`, unknown `ShaderStages`, zero `Size`, null `pData`
+     - duplicate `Name` with overlapping `ShaderStages`
+   - Add `GraphicsTypesXTest` coverage for `AddSpecializationConstant`, `ClearSpecializationConstants`, copy construction, and move construction with specialization constants attached.
 
 ### Exit criteria
 - API compiles for all backends.
 - Device feature reports are correct by backend.
 - Serialization round-trip preserves specialization constant payload.
 - Unsupported backends reject non-empty specialization constants with clear errors.
+- All `ValidateSpecializationConstants` error paths are covered by unit tests.
+- `PipelineStateCreateInfoX` deep-copy of specialization constants is verified by `GraphicsTypesXTest`.
 
 ---
 
