@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -135,8 +135,24 @@ bool PSOSerializer<Mode>::SerializeCreateInfo(
             return false;
     }
 
+    // Serialize specialization constants
+    if (!Ser.SerializeArray(Allocator, CreateInfo.pSpecializationConstants, CreateInfo.NumSpecializationConstants,
+                            [](Serializer<Mode>&                  Ser,
+                               ConstQual<SpecializationConstant>& SpecConst) //
+                            {
+                                if (!Ser(SpecConst.Name,
+                                         SpecConst.ShaderStages,
+                                         SpecConst.Size))
+                                    return false;
+
+                                size_t DataSize = SpecConst.Size;
+                                return Ser.SerializeBytes(SpecConst.pData, DataSize);
+                            }))
+        return false;
+
     ASSERT_SIZEOF64(ShaderResourceVariableDesc, 16, "Did you add a new member to ShaderResourceVariableDesc? Please add serialization here.");
-    ASSERT_SIZEOF64(PipelineStateCreateInfo, 96, "Did you add a new member to PipelineStateCreateInfo? Please add serialization here.");
+    ASSERT_SIZEOF64(SpecializationConstant, 24, "Did you add a new member to SpecializationConstant? Please add serialization here.");
+    ASSERT_SIZEOF64(PipelineStateCreateInfo, 112, "Did you add a new member to PipelineStateCreateInfo? Please add serialization here.");
 
     return true;
 }
