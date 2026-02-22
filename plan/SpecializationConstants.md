@@ -64,7 +64,7 @@ Introduce a backend-agnostic API surface for specialization constants and add fe
    - Without this, the render state cache (`RenderStateCacheImpl`) cannot distinguish PSOs that differ only by specialization constants, since the PSO lookup key (`XXH128Hash`) would collide.
 
 6. **Tests for stage 1**
-   - ~~Update `Tests/DiligentCoreTest/src/GraphicsEngine/PSOSerializerTest.cpp` for round-trip with non-empty specialization constants.~~ **DONE**
+   - Update `Tests/DiligentCoreTest/src/GraphicsEngine/PSOSerializerTest.cpp` for round-trip with non-empty specialization constants.
    - Add API validation tests in `Tests/DiligentCoreTest/src/GraphicsEngine/` for each error path in `ValidateSpecializationConstants`:
      - null pointer with non-zero count
      - feature disabled rejection
