@@ -1380,7 +1380,7 @@ struct PipelineStateCreateInfoX : CreateInfoType
             Entry.pData = nullptr;
         }
 
-        this->pSpecializationConstants    = SpecConstCopy.data();
+        this->pSpecializationConstants   = SpecConstCopy.data();
         this->NumSpecializationConstants = static_cast<Uint32>(SpecConstCopy.size());
 
         return static_cast<DerivedType&>(*this);
@@ -1390,7 +1390,7 @@ struct PipelineStateCreateInfoX : CreateInfoType
     {
         SpecConstCopy.clear();
         SpecConstDataCopy.clear();
-        this->pSpecializationConstants    = nullptr;
+        this->pSpecializationConstants   = nullptr;
         this->NumSpecializationConstants = 0;
 
         return static_cast<DerivedType&>(*this);
