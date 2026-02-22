@@ -2075,88 +2075,101 @@ TEST(RenderStateCacheTest, SpecializationConstants_DistinctEntries)
 
     GPUTestingEnvironment::ScopedReset AutoReset;
 
-    auto pCache = CreateCache(pDevice, /*HotReload=*/false);
-    ASSERT_TRUE(pCache);
-
-    // Create shaders
-    ShaderCreateInfo ShaderCI;
-    ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_HLSL;
-    ShaderCI.ShaderCompiler = pEnv->GetDefaultCompiler(ShaderCI.SourceLanguage);
-
-    RefCntAutoPtr<IShader> pVS, pPS;
-    {
-        ShaderCI.Desc       = {"SpecConst Distinct VS", SHADER_TYPE_VERTEX, true};
-        ShaderCI.EntryPoint = "main";
-        ShaderCI.Source     = HLSL::DrawTest_ProceduralTriangleVS.c_str();
-        CreateShader(pCache, ShaderCI, false, pVS);
-        ASSERT_TRUE(pVS);
-    }
-    {
-        ShaderCI.Desc       = {"SpecConst Distinct PS", SHADER_TYPE_PIXEL, true};
-        ShaderCI.EntryPoint = "main";
-        ShaderCI.Source     = HLSL::DrawTest_PS.c_str();
-        CreateShader(pCache, ShaderCI, false, pPS);
-        ASSERT_TRUE(pPS);
-    }
-
     auto* pSwapChain = pEnv->GetSwapChain();
 
-    auto CreatePSO = [&](const SpecializationConstant* pSpecConsts,
-                         Uint32                        NumSpecConsts,
-                         bool                          PresentInCache) -> RefCntAutoPtr<IPipelineState> {
-        GraphicsPipelineStateCreateInfo PsoCI;
-        PsoCI.PSODesc.Name = "Spec Const Distinct Test";
-
-        PsoCI.pVS = pVS;
-        PsoCI.pPS = pPS;
-
-        PsoCI.GraphicsPipeline.NumRenderTargets             = 1;
-        PsoCI.GraphicsPipeline.RTVFormats[0]                = pSwapChain->GetDesc().ColorBufferFormat;
-        PsoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
-
-        PsoCI.pSpecializationConstants   = pSpecConsts;
-        PsoCI.NumSpecializationConstants = NumSpecConsts;
-
-        RefCntAutoPtr<IPipelineState> pPSO;
-        bool                          PSOFound = pCache->CreateGraphicsPipelineState(PsoCI, &pPSO);
-        EXPECT_EQ(PSOFound, PresentInCache);
-        return pPSO;
-    };
-
-    // Create PSO with value A
     const float            ValueA        = 1.0f;
     SpecializationConstant SpecConstsA[] = {
         {"TestConstant", SHADER_TYPE_VERTEX, sizeof(ValueA), &ValueA},
     };
-    auto pPSO_A = CreatePSO(SpecConstsA, _countof(SpecConstsA), false);
-    ASSERT_NE(pPSO_A, nullptr);
-    ASSERT_EQ(pPSO_A->GetStatus(), PIPELINE_STATE_STATUS_READY);
 
-    // Create PSO with value B (different value, same name)
     const float            ValueB        = 2.0f;
     SpecializationConstant SpecConstsB[] = {
         {"TestConstant", SHADER_TYPE_VERTEX, sizeof(ValueB), &ValueB},
     };
-    auto pPSO_B = CreatePSO(SpecConstsB, _countof(SpecConstsB), false);
-    ASSERT_NE(pPSO_B, nullptr);
-    ASSERT_EQ(pPSO_B->GetStatus(), PIPELINE_STATE_STATUS_READY);
 
-    // PSOs must be different objects (different spec constant values => different hash)
-    EXPECT_NE(pPSO_A, pPSO_B);
+    RefCntAutoPtr<IDataBlob> pData;
+    for (Uint32 pass = 0; pass < 3; ++pass)
+    {
+        // 0: empty cache
+        // 1: loaded cache
+        // 2: reloaded cache (loaded -> stored -> loaded)
 
-    // Request PSO A again - should find exact match in cache
-    auto pPSO_A2 = CreatePSO(SpecConstsA, _countof(SpecConstsA), true);
-    EXPECT_EQ(pPSO_A, pPSO_A2);
+        auto pCache = CreateCache(pDevice, /*HotReload=*/false, pData);
+        ASSERT_TRUE(pCache);
 
-    // Request PSO B again - should find exact match in cache
-    auto pPSO_B2 = CreatePSO(SpecConstsB, _countof(SpecConstsB), true);
-    EXPECT_EQ(pPSO_B, pPSO_B2);
+        // Create shaders
+        ShaderCreateInfo ShaderCI;
+        ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_HLSL;
+        ShaderCI.ShaderCompiler = pEnv->GetDefaultCompiler(ShaderCI.SourceLanguage);
 
-    // A PSO with no spec constants must also be distinct from both A and B
-    auto pPSO_None = CreatePSO(nullptr, 0, false);
-    ASSERT_NE(pPSO_None, nullptr);
-    EXPECT_NE(pPSO_None, pPSO_A);
-    EXPECT_NE(pPSO_None, pPSO_B);
+        RefCntAutoPtr<IShader> pVS, pPS;
+        {
+            ShaderCI.Desc       = {"SpecConst Distinct VS", SHADER_TYPE_VERTEX, true};
+            ShaderCI.EntryPoint = "main";
+            ShaderCI.Source     = HLSL::DrawTest_ProceduralTriangleVS.c_str();
+            CreateShader(pCache, ShaderCI, pData != nullptr, pVS);
+            ASSERT_TRUE(pVS);
+        }
+        {
+            ShaderCI.Desc       = {"SpecConst Distinct PS", SHADER_TYPE_PIXEL, true};
+            ShaderCI.EntryPoint = "main";
+            ShaderCI.Source     = HLSL::DrawTest_PS.c_str();
+            CreateShader(pCache, ShaderCI, pData != nullptr, pPS);
+            ASSERT_TRUE(pPS);
+        }
+
+        auto CreatePSO = [&](const SpecializationConstant* pSpecConsts,
+                             Uint32                        NumSpecConsts,
+                             bool                          PresentInCache) -> RefCntAutoPtr<IPipelineState> {
+            GraphicsPipelineStateCreateInfo PsoCI;
+            PsoCI.PSODesc.Name = "Spec Const Distinct Test";
+
+            PsoCI.pVS = pVS;
+            PsoCI.pPS = pPS;
+
+            PsoCI.GraphicsPipeline.NumRenderTargets             = 1;
+            PsoCI.GraphicsPipeline.RTVFormats[0]                = pSwapChain->GetDesc().ColorBufferFormat;
+            PsoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
+
+            PsoCI.pSpecializationConstants   = pSpecConsts;
+            PsoCI.NumSpecializationConstants = NumSpecConsts;
+
+            RefCntAutoPtr<IPipelineState> pPSO;
+            bool                          PSOFound = pCache->CreateGraphicsPipelineState(PsoCI, &pPSO);
+            EXPECT_EQ(PSOFound, PresentInCache);
+            return pPSO;
+        };
+
+        // Create PSO with value A
+        auto pPSO_A = CreatePSO(SpecConstsA, _countof(SpecConstsA), pData != nullptr);
+        ASSERT_NE(pPSO_A, nullptr);
+        ASSERT_EQ(pPSO_A->GetStatus(), PIPELINE_STATE_STATUS_READY);
+
+        // Create PSO with value B (different value, same name)
+        auto pPSO_B = CreatePSO(SpecConstsB, _countof(SpecConstsB), pData != nullptr);
+        ASSERT_NE(pPSO_B, nullptr);
+        ASSERT_EQ(pPSO_B->GetStatus(), PIPELINE_STATE_STATUS_READY);
+
+        // PSOs must be different objects (different spec constant values => different hash)
+        EXPECT_NE(pPSO_A, pPSO_B);
+
+        // Request PSO A again - should find exact match in cache
+        auto pPSO_A2 = CreatePSO(SpecConstsA, _countof(SpecConstsA), true);
+        EXPECT_EQ(pPSO_A, pPSO_A2);
+
+        // Request PSO B again - should find exact match in cache
+        auto pPSO_B2 = CreatePSO(SpecConstsB, _countof(SpecConstsB), true);
+        EXPECT_EQ(pPSO_B, pPSO_B2);
+
+        // A PSO with no spec constants must also be distinct from both A and B
+        auto pPSO_None = CreatePSO(nullptr, 0, pData != nullptr);
+        ASSERT_NE(pPSO_None, nullptr);
+        EXPECT_NE(pPSO_None, pPSO_A);
+        EXPECT_NE(pPSO_None, pPSO_B);
+
+        pData.Release();
+        pCache->WriteToBlob(pass == 0 ? ContentVersion : ~0u, &pData);
+    }
 }
 
 } // namespace
