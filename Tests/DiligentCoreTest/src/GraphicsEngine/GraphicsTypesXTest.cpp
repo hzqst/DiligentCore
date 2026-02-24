@@ -1182,15 +1182,15 @@ TEST(GraphicsTypesXTest, SpecializationConstants)
         ComputePipelineStateCreateInfoX DescX;
         DescX.AddSpecializationConstant({"SC_Bytes", SHADER_TYPE_PIXEL, static_cast<Uint32>(_countof(MutableData)), MutableData});
 
-        for (auto& Byte : MutableData)
+        for (Uint8& Byte : MutableData)
             Byte = 0;
 
         ASSERT_EQ(DescX.NumSpecializationConstants, 1u);
-        const auto& SpecConst = DescX.pSpecializationConstants[0];
+        const SpecializationConstant& SpecConst = DescX.pSpecializationConstants[0];
         ASSERT_NE(SpecConst.pData, nullptr);
         EXPECT_EQ(SpecConst.Size, static_cast<Uint32>(_countof(RefData)));
 
-        const auto* pData = static_cast<const Uint8*>(SpecConst.pData);
+        const Uint8* pData = static_cast<const Uint8*>(SpecConst.pData);
         for (size_t i = 0; i < _countof(RefData); ++i)
             EXPECT_EQ(pData[i], RefData[i]);
     }
@@ -1212,16 +1212,16 @@ TEST(GraphicsTypesXTest, SpecializationConstants)
             SrcCI.pSpecializationConstants   = &SpecConst;
             DescX                            = ComputePipelineStateCreateInfoX{SrcCI};
 
-            for (auto& Byte : MutableData)
+            for (Uint8& Byte : MutableData)
                 Byte = 0;
         }
 
         ASSERT_EQ(DescX.NumSpecializationConstants, 1u);
-        const auto& SpecConst = DescX.pSpecializationConstants[0];
+        const SpecializationConstant& SpecConst = DescX.pSpecializationConstants[0];
         ASSERT_NE(SpecConst.pData, nullptr);
         EXPECT_EQ(SpecConst.Size, static_cast<Uint32>(_countof(RefData)));
 
-        const auto* pData = static_cast<const Uint8*>(SpecConst.pData);
+        const Uint8* pData = static_cast<const Uint8*>(SpecConst.pData);
         for (size_t i = 0; i < _countof(RefData); ++i)
             EXPECT_EQ(pData[i], RefData[i]);
     }
@@ -1433,8 +1433,9 @@ TEST(GraphicsTypesXTest, RenderDeviceX)
             (void)TexFmtInfoEx;
         }
         {
-            auto SparseInfo = Device.GetSparseTextureFormatInfo(TEX_FORMAT_UNKNOWN, RESOURCE_DIM_BUFFER, 0);
-            (void)SparseInfo;
+            SparseTextureFormatInfo SparseInfo;
+            auto                    FmtSupported = Device.GetSparseTextureFormatInfo(TEX_FORMAT_UNKNOWN, RESOURCE_DIM_BUFFER, 0, SparseInfo);
+            (void)FmtSupported;
         }
         Device.ReleaseStaleResources();
         Device.IdleGPU();
