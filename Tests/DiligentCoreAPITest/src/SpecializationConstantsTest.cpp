@@ -60,6 +60,7 @@ namespace
 // Spec-const shader: same gradient as FillTextureCS, but channel multipliers
 // come from specialization constants.
 // Reference output: vec4(vec2(xy % 256) / 256.0, 0.0, 1.0)
+// Base color has non-zero B so that sc_MulB is not optimized away.
 // To match: sc_MulR=1.0, sc_MulG=1.0, sc_MulB=0.0
 static constexpr char g_SpecConstComputeCS_GLSL[] = R"(
     #version 450
@@ -76,10 +77,13 @@ static constexpr char g_SpecConstComputeCS_GLSL[] = R"(
         ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
         if (coord.x >= dim.x || coord.y >= dim.y)
             return;
-        vec4 Color = vec4(vec2(gl_GlobalInvocationID.xy % 256u) / 256.0, 0.0, 1.0);
-        Color.r *= sc_MulR;
-        Color.g *= sc_MulG;
-        Color.b *= sc_MulB;
+        vec2 uv = vec2(gl_GlobalInvocationID.xy % 256u) / 256.0;
+        // Base color has non-zero B channel so the compiler cannot
+        // eliminate sc_MulB as a dead specialization constant.
+        vec4 Color = vec4(uv.x * sc_MulR,
+                          uv.y * sc_MulG,
+                          uv.x * sc_MulB,
+                          1.0);
         imageStore(g_tex2DUAV, coord, Color);
     }
 )";
@@ -115,10 +119,11 @@ TEST(SpecializationConstantsTest, ComputePath)
     // --- Spec-const pass: same gradient, channel multipliers via specialization constants ---
     {
         ShaderCreateInfo ShaderCI;
-        ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
-        ShaderCI.Desc           = {"SpecConst Compute CS", SHADER_TYPE_COMPUTE, true};
-        ShaderCI.EntryPoint     = "main";
-        ShaderCI.Source         = g_SpecConstComputeCS_GLSL;
+        ShaderCI.SourceLanguage             = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
+        ShaderCI.Desc                       = {"SpecConst Compute CS", SHADER_TYPE_COMPUTE, true};
+        ShaderCI.EntryPoint                 = "main";
+        ShaderCI.Source                     = g_SpecConstComputeCS_GLSL;
+        ShaderCI.LoadSpecializationConstants = true;
 
         RefCntAutoPtr<IShader> pCS;
         pDevice->CreateShader(ShaderCI, &pCS);
@@ -266,7 +271,8 @@ TEST(SpecializationConstantsTest, GraphicsPath)
         pContext->ClearRenderTarget(pRTVs[0], ClearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
         ShaderCreateInfo ShaderCI;
-        ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
+        ShaderCI.SourceLanguage              = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
+        ShaderCI.LoadSpecializationConstants = true;
 
         RefCntAutoPtr<IShader> pVS;
         {

@@ -1799,7 +1799,8 @@ TEST_F(PSOCreationFailureTest, SpecConst_NameNotFoundInShader)
     )";
 
     ShaderCreateInfo ShaderCI;
-    ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
+    ShaderCI.SourceLanguage              = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
+    ShaderCI.LoadSpecializationConstants = true;
 
     RefCntAutoPtr<IShader> pVS;
     {
@@ -1842,17 +1843,23 @@ TEST_F(PSOCreationFailureTest, SpecConst_SizeMismatch)
         GTEST_SKIP() << "Specialization constants are not supported by this device";
 
     // GLSL compute shader with a float specialization constant (4 bytes).
+    // The spec constant must be used so the compiler does not optimize it away.
     static constexpr char CSSource_GLSL[] = R"(
         #version 450
         layout(constant_id = 0) const float sc_Value = 1.0;
+        layout(rgba8, binding = 0) writeonly uniform image2D g_DummyUAV;
         layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
-        void main() {}
+        void main()
+        {
+            imageStore(g_DummyUAV, ivec2(0), vec4(sc_Value));
+        }
     )";
 
     ShaderCreateInfo ShaderCI;
-    ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
-    ShaderCI.Desc           = {"SpecConst SizeMismatch CS", SHADER_TYPE_COMPUTE, true};
-    ShaderCI.Source         = CSSource_GLSL;
+    ShaderCI.SourceLanguage              = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
+    ShaderCI.Desc                        = {"SpecConst SizeMismatch CS", SHADER_TYPE_COMPUTE, true};
+    ShaderCI.Source                      = CSSource_GLSL;
+    ShaderCI.LoadSpecializationConstants = true;
 
     RefCntAutoPtr<IShader> pCS;
     pDevice->CreateShader(ShaderCI, &pCS);

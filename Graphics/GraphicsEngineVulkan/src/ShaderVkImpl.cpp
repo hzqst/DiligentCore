@@ -241,6 +241,7 @@ void ShaderVkImpl::Initialize(const ShaderCreateInfo& ShaderCI,
             ResCI.CombinedSamplerSuffix       = m_Desc.UseCombinedTextureSamplers ? m_Desc.CombinedSamplerSuffix : nullptr;
             ResCI.LoadShaderStageInputs       = m_Desc.ShaderType == SHADER_TYPE_VERTEX;
             ResCI.LoadUniformBufferReflection = ShaderCI.LoadConstantBufferReflection;
+            ResCI.LoadSpecializationConstants = ShaderCI.LoadSpecializationConstants;
 
             m_pShaderResources = SPIRVShaderResources::Create(GetRawAllocator(), m_SPIRV, ResCI, &m_EntryPoint);
 

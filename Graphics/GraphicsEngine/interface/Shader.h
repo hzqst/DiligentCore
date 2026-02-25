@@ -534,6 +534,17 @@ struct ShaderCreateInfo
     ///       and should be disabled when it is not needed.
     bool LoadConstantBufferReflection DEFAULT_INITIALIZER(false);
 
+    /// Whether to load specialization constant reflection information.
+
+    /// When enabled, the engine will extract specialization constant names
+    /// and types from the SPIR-V bytecode during shader creation.
+    /// This information is required when using SpecializationConstant
+    /// entries (matched by name) at pipeline state creation time.
+
+    /// \note Loading specialization constant reflection introduces some overhead,
+    ///       and should be disabled when it is not needed.
+    bool LoadSpecializationConstants DEFAULT_INITIALIZER(false);
+
     /// An optional list of GLSL extensions to enable when compiling GLSL source code.
     const char* GLSLExtensions DEFAULT_INITIALIZER(nullptr);
 
@@ -676,6 +687,9 @@ struct ShaderCreateInfo
             return false;
 
         if (CI1.LoadConstantBufferReflection != CI2.LoadConstantBufferReflection)
+            return false;
+
+        if (CI1.LoadSpecializationConstants != CI2.LoadSpecializationConstants)
             return false;
 
         if (!SafeStrEqual(CI1.GLSLExtensions, CI2.GLSLExtensions))
