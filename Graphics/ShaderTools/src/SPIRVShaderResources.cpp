@@ -644,7 +644,8 @@ SPIRVShaderResources::SPIRVShaderResources(IMemoryAllocator&     Allocator,
             SpecConstInfo Info;
             Info.Name      = Compiler.get_name(sc.id);
             Info.SpecId    = sc.constant_id;
-            Info.Size      = Type.width / 8;
+            // OpTypeBool has width==1 in SPIRV-Cross; use 4 bytes (VkBool32) for bool specialization constants
+            Info.Size      = Type.basetype == diligent_spirv_cross::SPIRType::Boolean ? 4 : Type.width / 8;
             Info.BasicType = SpirvBaseTypeToShaderCodeBasicType(Type.basetype);
 
             if (Info.Name.empty())
