@@ -227,7 +227,6 @@ public:
         const char* CombinedSamplerSuffix       = nullptr;
         bool        LoadShaderStageInputs       = false;
         bool        LoadUniformBufferReflection = false;
-        bool        LoadSpecializationConstants = false;
     };
     SPIRVShaderResources(IMemoryAllocator&     Allocator,
                          std::vector<uint32_t> spirv_binary,

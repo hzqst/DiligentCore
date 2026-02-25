@@ -624,7 +624,6 @@ SPIRVShaderResources::SPIRVShaderResources(IMemoryAllocator&     Allocator,
     std::vector<SpecConstInfo> SpecConstants;
     Uint32                     NumSpecConstants = 0;
 
-    if (CI.LoadSpecializationConstants)
     {
         diligent_spirv_cross::SmallVector<diligent_spirv_cross::SpecializationConstant> spec_consts =
             Compiler.get_specialization_constants();

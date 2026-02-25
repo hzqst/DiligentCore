@@ -917,7 +917,6 @@ void PipelineStateVkImpl::RemapOrVerifyShaderResources(
                     ResCI.CombinedSamplerSuffix       = pShaderResources->GetCombinedSamplerSuffix();
                     ResCI.LoadShaderStageInputs       = false; // Inputs have already been remapped
                     ResCI.LoadUniformBufferReflection = pShaderResources->HasUniformBufferReflection();
-                    ResCI.LoadSpecializationConstants = pShaderResources->GetNumSpecConstants() > 0;
 
                     pShaderResources = SPIRVShaderResources::Create(GetRawAllocator(), SPIRV, ResCI);
 #else
