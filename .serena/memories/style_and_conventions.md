@@ -15,5 +15,6 @@
   - `DILIGENT_NO_FORMAT_VALIDATION`：是否禁用格式校验（默认 ON；若希望构建阶段校验，需设为 OFF）。
 - Windows 上常用 Visual Studio 生成器与 `-A x64` 平台参数（见 `build-x64-Debug.bat`）。
 
-## 命名/接口习惯（从 README/API 片段可见）
+## 命名/接口习惯
 - C++ API 常以 `Diligent` 命名空间组织；引擎初始化通过各后端的 `IEngineFactory*` 进行（D3D11/D3D12/GL/Vk/WebGPU 等）。
+- We use `auto` **ONLY** where it is reasonable (like when getting a map iterator). direct type should be used in the most common cases, which will make code easier to read.
