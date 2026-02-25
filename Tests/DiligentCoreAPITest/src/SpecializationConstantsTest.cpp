@@ -52,12 +52,6 @@ using namespace Diligent::Testing;
 namespace
 {
 
-// ---------------------------------------------------------------------------
-// Compute path: fill the swap chain back buffer via specialization constants.
-// Uses ComputeShaderReference for the reference snapshot, just like
-// InlineConstantsTest::ComputeResourceLayout.
-// ---------------------------------------------------------------------------
-
 // Spec-const shader: same gradient as FillTextureCS, but channel multipliers
 // come from specialization constants.
 // Reference output: vec4(vec2(xy % 256) / 256.0, 0.0, 1.0)
@@ -89,7 +83,95 @@ static constexpr char g_SpecConstComputeCS_GLSL[] = R"(
     }
 )";
 
-TEST(SpecializationConstantsTest, ComputePath)
+// Vertex shader: hardcoded positions (same as DrawTest_ProceduralTriangleVS),
+// per-vertex colors supplied via specialization constants (9 floats).
+static constexpr char g_SpecConstGraphicsVS_GLSL[] = R"(
+    #version 450
+
+    #ifndef GL_ES
+    out gl_PerVertex { vec4 gl_Position; };
+    #endif
+
+    // Per-vertex colors as specialization constants (3 colors x RGB).
+    layout(constant_id = 0) const float sc_Col0_R = 1.0;
+    layout(constant_id = 1) const float sc_Col0_G = 0.0;
+    layout(constant_id = 2) const float sc_Col0_B = 0.0;
+
+    layout(constant_id = 3) const float sc_Col1_R = 0.0;
+    layout(constant_id = 4) const float sc_Col1_G = 1.0;
+    layout(constant_id = 5) const float sc_Col1_B = 0.0;
+
+    layout(constant_id = 6) const float sc_Col2_R = 0.0;
+    layout(constant_id = 7) const float sc_Col2_G = 0.0;
+    layout(constant_id = 8) const float sc_Col2_B = 1.0;
+
+    layout(location = 0) out vec3 out_Color;
+
+    void main()
+    {
+        vec4 Pos[6];
+        Pos[0] = vec4(-1.0, -0.5, 0.0, 1.0);
+        Pos[1] = vec4(-0.5, +0.5, 0.0, 1.0);
+        Pos[2] = vec4( 0.0, -0.5, 0.0, 1.0);
+
+        Pos[3] = vec4(+0.0, -0.5, 0.0, 1.0);
+        Pos[4] = vec4(+0.5, +0.5, 0.0, 1.0);
+        Pos[5] = vec4(+1.0, -0.5, 0.0, 1.0);
+
+        vec3 Col[3];
+        Col[0] = vec3(sc_Col0_R, sc_Col0_G, sc_Col0_B);
+        Col[1] = vec3(sc_Col1_R, sc_Col1_G, sc_Col1_B);
+        Col[2] = vec3(sc_Col2_R, sc_Col2_G, sc_Col2_B);
+
+        gl_Position = Pos[gl_VertexIndex];
+        out_Color   = Col[gl_VertexIndex % 3];
+    }
+)";
+
+// Fragment shader: pass-through interpolated color.
+static constexpr char g_SpecConstGraphicsPS_GLSL[] = R"(
+    #version 450
+
+    layout(location = 0) in  vec3 in_Color;
+    layout(location = 0) out vec4 out_Color;
+
+    void main()
+    {
+        out_Color = vec4(in_Color, 1.0);
+    }
+)";
+
+
+class SpecializationConstants : public ::testing::Test
+{
+protected:
+    static void TearDownTestSuite()
+    {
+        GPUTestingEnvironment* pEnv = GPUTestingEnvironment::GetInstance();
+        pEnv->Reset();
+    }
+
+    static void Present()
+    {
+        GPUTestingEnvironment* pEnv       = GPUTestingEnvironment::GetInstance();
+        ISwapChain*            pSwapChain = pEnv->GetSwapChain();
+
+        pSwapChain->Present();
+    }
+
+    static FastRandFloat sm_Rnd;
+};
+
+FastRandFloat SpecializationConstants::sm_Rnd{0, 0.f, 1.f};
+
+
+// ---------------------------------------------------------------------------
+// Compute path: fill the swap chain back buffer via specialization constants.
+// Uses ComputeShaderReference for the reference snapshot, just like
+// InlineConstantsTest::ComputeResourceLayout.
+// ---------------------------------------------------------------------------
+
+TEST_F(SpecializationConstants, ComputePath)
 {
     auto* const pEnv       = GPUTestingEnvironment::GetInstance();
     auto* const pDevice    = pEnv->GetDevice();
@@ -169,7 +251,7 @@ TEST(SpecializationConstantsTest, ComputePath)
         pContext->DispatchCompute(DispatchAttribs);
     }
 
-    pSwapChain->Present();
+    Present();
 }
 
 
@@ -179,65 +261,7 @@ TEST(SpecializationConstantsTest, ComputePath)
 // DrawCommandTest and InlineConstantsTest.
 // ---------------------------------------------------------------------------
 
-// Vertex shader: hardcoded positions (same as DrawTest_ProceduralTriangleVS),
-// per-vertex colors supplied via specialization constants (9 floats).
-static constexpr char g_SpecConstGraphicsVS_GLSL[] = R"(
-    #version 450
-
-    #ifndef GL_ES
-    out gl_PerVertex { vec4 gl_Position; };
-    #endif
-
-    // Per-vertex colors as specialization constants (3 colors x RGB).
-    layout(constant_id = 0) const float sc_Col0_R = 1.0;
-    layout(constant_id = 1) const float sc_Col0_G = 0.0;
-    layout(constant_id = 2) const float sc_Col0_B = 0.0;
-
-    layout(constant_id = 3) const float sc_Col1_R = 0.0;
-    layout(constant_id = 4) const float sc_Col1_G = 1.0;
-    layout(constant_id = 5) const float sc_Col1_B = 0.0;
-
-    layout(constant_id = 6) const float sc_Col2_R = 0.0;
-    layout(constant_id = 7) const float sc_Col2_G = 0.0;
-    layout(constant_id = 8) const float sc_Col2_B = 1.0;
-
-    layout(location = 0) out vec3 out_Color;
-
-    void main()
-    {
-        vec4 Pos[6];
-        Pos[0] = vec4(-1.0, -0.5, 0.0, 1.0);
-        Pos[1] = vec4(-0.5, +0.5, 0.0, 1.0);
-        Pos[2] = vec4( 0.0, -0.5, 0.0, 1.0);
-
-        Pos[3] = vec4(+0.0, -0.5, 0.0, 1.0);
-        Pos[4] = vec4(+0.5, +0.5, 0.0, 1.0);
-        Pos[5] = vec4(+1.0, -0.5, 0.0, 1.0);
-
-        vec3 Col[3];
-        Col[0] = vec3(sc_Col0_R, sc_Col0_G, sc_Col0_B);
-        Col[1] = vec3(sc_Col1_R, sc_Col1_G, sc_Col1_B);
-        Col[2] = vec3(sc_Col2_R, sc_Col2_G, sc_Col2_B);
-
-        gl_Position = Pos[gl_VertexIndex];
-        out_Color   = Col[gl_VertexIndex % 3];
-    }
-)";
-
-// Fragment shader: pass-through interpolated color.
-static constexpr char g_SpecConstGraphicsPS_GLSL[] = R"(
-    #version 450
-
-    layout(location = 0) in  vec3 in_Color;
-    layout(location = 0) out vec4 out_Color;
-
-    void main()
-    {
-        out_Color = vec4(in_Color, 1.0);
-    }
-)";
-
-TEST(SpecializationConstantsTest, GraphicsPath)
+TEST_F(SpecializationConstants, GraphicsPath)
 {
     auto* const pEnv       = GPUTestingEnvironment::GetInstance();
     auto* const pDevice    = pEnv->GetDevice();
@@ -261,8 +285,7 @@ TEST(SpecializationConstantsTest, GraphicsPath)
     const SwapChainDesc& SCDesc = pSwapChain->GetDesc();
 
     // --- Reference pass: native-API two-triangle draw + TakeSnapshot ---
-    FastRandFloat Rnd{0, 0.f, 1.f};
-    const float   ClearColor[] = {Rnd(), Rnd(), Rnd(), Rnd()};
+    const float ClearColor[] = {sm_Rnd(), sm_Rnd(), sm_Rnd(), sm_Rnd()};
     RenderDrawCommandReference(pSwapChain, ClearColor);
 
     // --- Spec-const pass: same two triangles, colors via specialization constants ---
@@ -335,7 +358,7 @@ TEST(SpecializationConstantsTest, GraphicsPath)
         pContext->Draw(drawAttribs);
     }
 
-    pSwapChain->Present();
+    Present();
 }
 
 
