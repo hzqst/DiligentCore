@@ -609,7 +609,6 @@ void TestSpecializationConstants(SHADER_COMPILER Compiler)
     SPIRVShaderResources::CreateInfo ResCI;
     ResCI.ShaderType                  = SHADER_TYPE_PIXEL;
     ResCI.Name                        = "SpecConstants test";
-    ResCI.LoadSpecializationConstants = true;
     SPIRVShaderResources Resources{
         GetRawAllocator(),
         SPIRV,
