@@ -33,6 +33,7 @@
 #include "GPUTestingEnvironment.hpp"
 #include "TestingSwapChainBase.hpp"
 #include "GraphicsAccessories.hpp"
+#include "FastRand.hpp"
 
 #include "gtest/gtest.h"
 
@@ -260,7 +261,8 @@ TEST(SpecializationConstantsTest, GraphicsPath)
     const SwapChainDesc& SCDesc = pSwapChain->GetDesc();
 
     // --- Reference pass: native-API two-triangle draw + TakeSnapshot ---
-    const float ClearColor[] = {0.25f, 0.25f, 0.25f, 1.0f};
+    FastRandFloat Rnd{0, 0.f, 1.f};
+    const float   ClearColor[] = {Rnd(), Rnd(), Rnd(), Rnd()};
     RenderDrawCommandReference(pSwapChain, ClearColor);
 
     // --- Spec-const pass: same two triangles, colors via specialization constants ---
