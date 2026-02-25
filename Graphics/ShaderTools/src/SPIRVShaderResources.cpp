@@ -617,9 +617,9 @@ SPIRVShaderResources::SPIRVShaderResources(IMemoryAllocator&     Allocator,
     struct SpecConstInfo
     {
         std::string            Name;
-        uint32_t               SpecId;
-        uint32_t               Size;
-        SHADER_CODE_BASIC_TYPE BasicType;
+        uint32_t               SpecId    = 0;
+        uint32_t               Size      = 0;
+        SHADER_CODE_BASIC_TYPE BasicType = SHADER_CODE_BASIC_TYPE_UNKNOWN;
     };
     std::vector<SpecConstInfo> SpecConstants;
     Uint32                     NumSpecConstants = 0;

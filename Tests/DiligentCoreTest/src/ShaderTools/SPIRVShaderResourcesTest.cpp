@@ -630,13 +630,13 @@ void TestSpecializationConstants(SHADER_COMPILER Compiler)
 
     // Build a map from name to reference for order-independent matching
     std::unordered_map<std::string, const SPIRVSpecConstRefAttribs*> RefMap;
-    for (const auto& Ref : RefSpecConstants)
+    for (const SPIRVSpecConstRefAttribs& Ref : RefSpecConstants)
         RefMap[Ref.Name] = &Ref;
 
     for (Uint32 i = 0; i < ConstResources.GetNumSpecConstants(); ++i)
     {
-        const auto& SC = ConstResources.GetSpecConstant(i);
-        const auto  it = RefMap.find(SC.Name);
+        const SPIRVSpecializationConstantAttribs& SC = ConstResources.GetSpecConstant(i);
+        const auto                                it = RefMap.find(SC.Name);
         ASSERT_NE(it, RefMap.end()) << "Specialization constant '" << SC.Name << "' is not found in the reference list";
 
         const auto* pRef = it->second;
