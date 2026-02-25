@@ -140,9 +140,9 @@ void BuildSpecializationData(const PipelineStateVkImpl::TShaderStages&     Shade
         {
             VERIFY_EXPR(vkStageIdx < vkStages.size());
 
-            const ShaderVkImpl*          pShader   = StageItem.pShader;
-            const SPIRVShaderResources*  pResources = pShader->GetShaderResources().get();
-            ShaderStageSpecializationData& StageData = SpecDataPerStage[vkStageIdx];
+            const ShaderVkImpl*            pShader    = StageItem.pShader;
+            const SPIRVShaderResources*    pResources = pShader->GetShaderResources().get();
+            ShaderStageSpecializationData& StageData  = SpecDataPerStage[vkStageIdx];
 
             // Track SpecIds already bound in this stage to detect duplicates.
             std::unordered_map<uint32_t, const char*> BoundSpecIds;
@@ -1157,7 +1157,7 @@ void PipelineStateVkImpl::InitializePipeline(const RayTracingPipelineStateCreate
     std::vector<VkPipelineShaderStageCreateInfo>      vkShaderStages;
     std::vector<VulkanUtilities::ShaderModuleWrapper> ShaderModules;
 
-    const PipelineStateVkImpl::TShaderStages                ShaderStages   = InitInternalObjects(CreateInfo, vkShaderStages, ShaderModules);
+    const PipelineStateVkImpl::TShaderStages ShaderStages = InitInternalObjects(CreateInfo, vkShaderStages, ShaderModules);
 
     std::vector<ShaderStageSpecializationData> SpecDataPerStage;
     BuildSpecializationData(ShaderStages, CreateInfo.NumSpecializationConstants, CreateInfo.pSpecializationConstants, m_Desc, vkShaderStages, SpecDataPerStage);
