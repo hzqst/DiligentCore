@@ -1372,8 +1372,8 @@ TEST_F(PSOCreationFailureTest, InvalidArraySize)
     ShaderCreateInfo ShaderCI;
     ShaderCI.Source                         = pDevice->GetDeviceInfo().IsWebGPUDevice() ? PSSourceWGPU : PSSource;
     ShaderCI.Desc                           = {"Invalid Array Size (PSOCreationFailureTest)", SHADER_TYPE_PIXEL, true};
-    ShaderCI.SourceLanguage                 = SHADER_SOURCE_LANGUAGE_HLSL;
-    ShaderCI.ShaderCompiler                 = pEnv->GetDefaultCompiler(ShaderCI.SourceLanguage);
+    ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_HLSL;
+    ShaderCI.ShaderCompiler = pEnv->GetDefaultCompiler(ShaderCI.SourceLanguage);
     ShaderCI.WebGPUEmulatedArrayIndexSuffix = "_";
 
     RefCntAutoPtr<IShader> pPS;
@@ -1799,8 +1799,7 @@ TEST_F(PSOCreationFailureTest, SpecConst_NameNotFoundInShader)
     )";
 
     ShaderCreateInfo ShaderCI;
-    ShaderCI.SourceLanguage              = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
-    ShaderCI.LoadSpecializationConstants = true;
+    ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
 
     RefCntAutoPtr<IShader> pVS;
     {
@@ -1856,10 +1855,9 @@ TEST_F(PSOCreationFailureTest, SpecConst_SizeMismatch)
     )";
 
     ShaderCreateInfo ShaderCI;
-    ShaderCI.SourceLanguage              = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
-    ShaderCI.Desc                        = {"SpecConst SizeMismatch CS", SHADER_TYPE_COMPUTE, true};
-    ShaderCI.Source                      = CSSource_GLSL;
-    ShaderCI.LoadSpecializationConstants = true;
+    ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
+    ShaderCI.Desc           = {"SpecConst SizeMismatch CS", SHADER_TYPE_COMPUTE, true};
+    ShaderCI.Source         = CSSource_GLSL;
 
     RefCntAutoPtr<IShader> pCS;
     pDevice->CreateShader(ShaderCI, &pCS);
