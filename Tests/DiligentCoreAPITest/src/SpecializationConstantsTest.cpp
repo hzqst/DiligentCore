@@ -119,10 +119,10 @@ TEST(SpecializationConstantsTest, ComputePath)
     // --- Spec-const pass: same gradient, channel multipliers via specialization constants ---
     {
         ShaderCreateInfo ShaderCI;
-        ShaderCI.SourceLanguage             = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
-        ShaderCI.Desc                       = {"SpecConst Compute CS", SHADER_TYPE_COMPUTE, true};
-        ShaderCI.EntryPoint                 = "main";
-        ShaderCI.Source                     = g_SpecConstComputeCS_GLSL;
+        ShaderCI.SourceLanguage              = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
+        ShaderCI.Desc                        = {"SpecConst Compute CS", SHADER_TYPE_COMPUTE, true};
+        ShaderCI.EntryPoint                  = "main";
+        ShaderCI.Source                      = g_SpecConstComputeCS_GLSL;
         ShaderCI.LoadSpecializationConstants = true;
 
         RefCntAutoPtr<IShader> pCS;

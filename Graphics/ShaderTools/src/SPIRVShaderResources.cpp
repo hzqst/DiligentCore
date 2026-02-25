@@ -626,8 +626,9 @@ SPIRVShaderResources::SPIRVShaderResources(IMemoryAllocator&     Allocator,
 
     if (CI.LoadSpecializationConstants)
     {
-        auto spec_consts = Compiler.get_specialization_constants();
-        for (const auto& sc : spec_consts)
+        diligent_spirv_cross::SmallVector<diligent_spirv_cross::SpecializationConstant> spec_consts =
+            Compiler.get_specialization_constants();
+        for (const diligent_spirv_cross::SpecializationConstant& sc : spec_consts)
         {
             const diligent_spirv_cross::SPIRConstant& Constant = Compiler.get_constant(sc.id);
             const diligent_spirv_cross::SPIRType&     Type     = Compiler.get_type(Constant.constant_type);
