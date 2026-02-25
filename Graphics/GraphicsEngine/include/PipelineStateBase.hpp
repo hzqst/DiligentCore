@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2026 Diligent Graphics LLC
+ *  Copyright 2019-2025 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -109,6 +109,7 @@ void ValidatePipelineResourceCompatibility(const PipelineResourceDesc& ResDesc,
                                            Uint32                      ArraySize,
                                            const char*                 ShaderName,
                                            const char*                 SignatureName) noexcept(false);
+
 
 /// Copies ray tracing shader group names and also initializes the mapping from the group name to its index.
 void CopyRTShaderGroupNames(std::unordered_map<HashMapStringKey, Uint32>& NameToGroupIndex,

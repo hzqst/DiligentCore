@@ -174,7 +174,6 @@
 		<map field="PipelineStateCreateInfo::NumSpecializationConstants" relation="length(pSpecializationConstants)"/>
 		<map field="PipelineStateCreateInfo::pInternalData" visibility="private"/>
 
-
 		<map field="RayTracingPipelineStateCreateInfo::GeneralShaderCount" relation="length(pGeneralShaders)"/>
 		<map field="RayTracingPipelineStateCreateInfo::TriangleHitShaderCount" relation="length(pTriangleHitShaders"/>
 		<map field="RayTracingPipelineStateCreateInfo::ProceduralHitShaderCount" relation="length(pProceduralHitShaders"/>

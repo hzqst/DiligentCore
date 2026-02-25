@@ -1863,8 +1863,8 @@ struct DeviceFeatures
     /// pipeline creation time. The driver may use these values to optimize
     /// the compiled shader code.
     ///
-    /// Vulkan and WebGPU backends support this feature.
-    /// D3D11, D3D12, OpenGL, and Metal backends do not.
+	/// Supported by Vulkan and WebGPU backends.
+	/// Not supported by D3D11, D3D12, OpenGL, or Metal backends.
     DEVICE_FEATURE_STATE SpecializationConstants DEFAULT_INITIALIZER(DEVICE_FEATURE_STATE_DISABLED);
 
 #if DILIGENT_CPP_INTERFACE

@@ -704,9 +704,14 @@ DILIGENT_TYPED_ENUM(PSO_CREATE_FLAGS, Uint32)
 };
 DEFINE_FLAG_ENUM_OPERATORS(PSO_CREATE_FLAGS);
 
-/// Specialization constants allow applications to set constant values
-/// at pipeline creation time, enabling the driver to optimize the compiled
-/// shader code.
+
+/// Pipeline state specialization constant.
+///
+/// Specialization constants are shader constants whose values are provided
+/// when the pipeline state is created. Their values are patched into the
+/// shader bytecode at specialization time, allowing applications to create
+/// pipeline variations without recompiling shaders and enabling the driver
+/// to optimize the resulting shader code.
 ///
 /// \remarks    Specialization constants are supported in Vulkan (via VkSpecializationInfo)
 ///             and WebGPU (via pipeline-overridable constants). Other backends

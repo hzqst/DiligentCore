@@ -1361,7 +1361,7 @@ struct PipelineStateCreateInfoX : CreateInfoType
     DerivedType& AddSpecializationConstant(const SpecializationConstant& SpecConst)
     {
         SpecConstCopy.push_back(SpecConst);
-        auto& Entry = SpecConstCopy.back();
+        SpecializationConstant& Entry = SpecConstCopy.back();
 
         // Deep-copy name
         if (SpecConst.Name != nullptr)
@@ -1370,7 +1370,7 @@ struct PipelineStateCreateInfoX : CreateInfoType
         // Deep-copy data
         if (SpecConst.Size > 0 && SpecConst.pData != nullptr)
         {
-            const auto* pSrcData = static_cast<const Uint8*>(SpecConst.pData);
+            const Uint8* pSrcData = static_cast<const Uint8*>(SpecConst.pData);
             SpecConstDataCopy.emplace_back(pSrcData, pSrcData + SpecConst.Size);
             Entry.pData = SpecConstDataCopy.back().data();
         }
@@ -2290,11 +2290,12 @@ public:
         return m_pDevice->GetTextureFormatInfoExt(TexFormat);
     }
 
-    SparseTextureFormatInfo GetSparseTextureFormatInfo(TEXTURE_FORMAT     TexFormat,
-                                                       RESOURCE_DIMENSION Dimension,
-                                                       Uint32             SampleCount) const noexcept
+    Bool GetSparseTextureFormatInfo(TEXTURE_FORMAT           TexFormat,
+                                    RESOURCE_DIMENSION       Dimension,
+                                    Uint32                   SampleCount,
+                                    SparseTextureFormatInfo& FormatInfo) const noexcept
     {
-        return m_pDevice->GetSparseTextureFormatInfo(TexFormat, Dimension, SampleCount);
+        return m_pDevice->GetSparseTextureFormatInfo(TexFormat, Dimension, SampleCount, FormatInfo);
     }
 
     void ReleaseStaleResources(bool ForceRelease = false) const noexcept
