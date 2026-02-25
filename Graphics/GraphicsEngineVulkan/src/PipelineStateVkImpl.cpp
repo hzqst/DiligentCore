@@ -95,6 +95,148 @@ void InitPipelineShaderStages(const VulkanUtilities::LogicalDevice&             
 }
 
 
+// Per-shader-stage specialization constant data for Vulkan pipeline creation.
+// Holds VkSpecializationMapEntry array, contiguous data blob, and the
+// VkSpecializationInfo that references them.  Lifetime must exceed the
+// vkCreate*Pipelines call.
+struct ShaderStageSpecializationData
+{
+    std::vector<VkSpecializationMapEntry> MapEntries;
+    std::vector<Uint8>                    DataBlob;
+    VkSpecializationInfo                  Info{};
+};
+
+// Matches user-provided SpecializationConstant entries to SPIR-V reflected
+// specialization constants by name, validates size compatibility, and builds
+// per-stage VkSpecializationInfo structures.
+//
+// Parameters:
+//   ShaderStages                - shader stages extracted from the PSO create info
+//   NumSpecializationConstants  - number of user-provided specialization constants
+//   pSpecializationConstants    - user-provided specialization constant array
+//   PSODesc                     - pipeline state description (for error messages)
+//   vkStages [in/out]           - VkPipelineShaderStageCreateInfo array to patch
+//   SpecDataPerStage [out]      - per-stage specialization data (must outlive vkCreate*Pipelines)
+//
+// Throws on validation failure (name not found, size mismatch, duplicate SpecId binding).
+void BuildSpecializationData(const PipelineStateVkImpl::TShaderStages&     ShaderStages,
+                             Uint32                                        NumSpecializationConstants,
+                             const SpecializationConstant*                 pSpecializationConstants,
+                             const PipelineStateDesc&                      PSODesc,
+                             std::vector<VkPipelineShaderStageCreateInfo>& vkStages,
+                             std::vector<ShaderStageSpecializationData>&   SpecDataPerStage)
+{
+    if (NumSpecializationConstants == 0 || pSpecializationConstants == nullptr)
+        return;
+
+    // vkStages has one entry per ShaderStageInfo::Item across all stages.
+    // We build one ShaderStageSpecializationData per vkStages entry.
+    SpecDataPerStage.resize(vkStages.size());
+
+    Uint32 vkStageIdx = 0;
+    for (const PipelineStateVkImpl::ShaderStageInfo& Stage : ShaderStages)
+    {
+        for (const PipelineStateVkImpl::ShaderStageInfo::Item& StageItem : Stage.Items)
+        {
+            VERIFY_EXPR(vkStageIdx < vkStages.size());
+
+            const ShaderVkImpl*          pShader   = StageItem.pShader;
+            const SPIRVShaderResources*  pResources = pShader->GetShaderResources().get();
+            ShaderStageSpecializationData& StageData = SpecDataPerStage[vkStageIdx];
+
+            // Track SpecIds already bound in this stage to detect duplicates.
+            std::unordered_map<uint32_t, const char*> BoundSpecIds;
+
+            Uint32 DataOffset = 0;
+            for (Uint32 sc = 0; sc < NumSpecializationConstants; ++sc)
+            {
+                const SpecializationConstant& UserConst = pSpecializationConstants[sc];
+
+                // Check if this constant applies to the current shader stage.
+                if ((UserConst.ShaderStages & Stage.Type) == 0)
+                    continue;
+
+                // Search for the matching reflected specialization constant by name.
+                const SPIRVSpecializationConstantAttribs* pReflected = nullptr;
+                for (Uint32 r = 0; r < pResources->GetNumSpecConstants(); ++r)
+                {
+                    const auto& Reflected = pResources->GetSpecConstant(r);
+                    if (strcmp(Reflected.Name, UserConst.Name) == 0)
+                    {
+                        pReflected = &Reflected;
+                        break;
+                    }
+                }
+
+                if (pReflected == nullptr)
+                {
+                    LOG_ERROR_AND_THROW("Description of ", GetPipelineTypeString(PSODesc.PipelineType),
+                                        " PSO '", (PSODesc.Name != nullptr ? PSODesc.Name : ""),
+                                        "' is invalid: specialization constant '", UserConst.Name,
+                                        "' was not found in ", GetShaderTypeLiteralName(Stage.Type),
+                                        " shader '", pShader->GetDesc().Name, "'.");
+                }
+
+                // Validate size compatibility.
+                if (UserConst.Size != pReflected->Size)
+                {
+                    LOG_ERROR_AND_THROW("Description of ", GetPipelineTypeString(PSODesc.PipelineType),
+                                        " PSO '", (PSODesc.Name != nullptr ? PSODesc.Name : ""),
+                                        "' is invalid: specialization constant '", UserConst.Name,
+                                        "' in ", GetShaderTypeLiteralName(Stage.Type),
+                                        " shader '", pShader->GetDesc().Name,
+                                        "' has size mismatch: user provided ", UserConst.Size,
+                                        " bytes, but the shader declares ",
+                                        GetShaderCodeBasicTypeString(pReflected->BasicType),
+                                        " (", pReflected->Size, " bytes).");
+                }
+
+                // Check for duplicate SpecId binding within this stage.
+                auto it = BoundSpecIds.find(pReflected->SpecId);
+                if (it != BoundSpecIds.end())
+                {
+                    LOG_ERROR_AND_THROW("Description of ", GetPipelineTypeString(PSODesc.PipelineType),
+                                        " PSO '", (PSODesc.Name != nullptr ? PSODesc.Name : ""),
+                                        "' is invalid: specialization constant '", UserConst.Name,
+                                        "' in ", GetShaderTypeLiteralName(Stage.Type),
+                                        " shader '", pShader->GetDesc().Name,
+                                        "' maps to SpecId ", pReflected->SpecId,
+                                        " which is already bound by constant '", it->second, "'.");
+                }
+                BoundSpecIds.emplace(pReflected->SpecId, UserConst.Name);
+
+                // Build the map entry.
+                VkSpecializationMapEntry Entry{};
+                Entry.constantID = pReflected->SpecId;
+                Entry.offset     = DataOffset;
+                Entry.size       = UserConst.Size;
+                StageData.MapEntries.push_back(Entry);
+
+                // Append data to the blob.
+                const Uint8* pSrcData = static_cast<const Uint8*>(UserConst.pData);
+                StageData.DataBlob.insert(StageData.DataBlob.end(), pSrcData, pSrcData + UserConst.Size);
+                DataOffset += UserConst.Size;
+            }
+
+            // Populate VkSpecializationInfo if any entries were matched.
+            if (!StageData.MapEntries.empty())
+            {
+                StageData.Info.mapEntryCount = static_cast<uint32_t>(StageData.MapEntries.size());
+                StageData.Info.pMapEntries   = StageData.MapEntries.data();
+                StageData.Info.dataSize      = StageData.DataBlob.size();
+                StageData.Info.pData         = StageData.DataBlob.data();
+
+                vkStages[vkStageIdx].pSpecializationInfo = &StageData.Info;
+            }
+
+            ++vkStageIdx;
+        }
+    }
+
+    VERIFY_EXPR(vkStageIdx == vkStages.size());
+}
+
+
 void CreateComputePipeline(RenderDeviceVkImpl*                           pDeviceVk,
                            std::vector<VkPipelineShaderStageCreateInfo>& Stages,
                            const PipelineLayoutVk&                       Layout,
@@ -983,7 +1125,12 @@ void PipelineStateVkImpl::InitializePipeline(const GraphicsPipelineStateCreateIn
     std::vector<VkPipelineShaderStageCreateInfo>      vkShaderStages;
     std::vector<VulkanUtilities::ShaderModuleWrapper> ShaderModules;
 
-    InitInternalObjects(CreateInfo, vkShaderStages, ShaderModules);
+    const TShaderStages ShaderStages = InitInternalObjects(CreateInfo, vkShaderStages, ShaderModules);
+
+    // Build per-stage specialization data and patch vkShaderStages.
+    // SpecDataPerStage must outlive the vkCreate*Pipelines call below.
+    std::vector<ShaderStageSpecializationData> SpecDataPerStage;
+    BuildSpecializationData(ShaderStages, CreateInfo.NumSpecializationConstants, CreateInfo.pSpecializationConstants, m_Desc, vkShaderStages, SpecDataPerStage);
 
     const VkPipelineCache vkSPOCache = CreateInfo.pPSOCache != nullptr ? ClassPtrCast<PipelineStateCacheVkImpl>(CreateInfo.pPSOCache)->GetVkPipelineCache() : VK_NULL_HANDLE;
     CreateGraphicsPipeline(m_pDevice, vkShaderStages, m_PipelineLayout, m_Desc, m_pGraphicsPipelineData->Desc, m_Pipeline, GetRenderPassPtr(), vkSPOCache);
@@ -994,7 +1141,10 @@ void PipelineStateVkImpl::InitializePipeline(const ComputePipelineStateCreateInf
     std::vector<VkPipelineShaderStageCreateInfo>      vkShaderStages;
     std::vector<VulkanUtilities::ShaderModuleWrapper> ShaderModules;
 
-    InitInternalObjects(CreateInfo, vkShaderStages, ShaderModules);
+    const TShaderStages ShaderStages = InitInternalObjects(CreateInfo, vkShaderStages, ShaderModules);
+
+    std::vector<ShaderStageSpecializationData> SpecDataPerStage;
+    BuildSpecializationData(ShaderStages, CreateInfo.NumSpecializationConstants, CreateInfo.pSpecializationConstants, m_Desc, vkShaderStages, SpecDataPerStage);
 
     const VkPipelineCache vkSPOCache = CreateInfo.pPSOCache != nullptr ? ClassPtrCast<PipelineStateCacheVkImpl>(CreateInfo.pPSOCache)->GetVkPipelineCache() : VK_NULL_HANDLE;
     CreateComputePipeline(m_pDevice, vkShaderStages, m_PipelineLayout, m_Desc, m_Pipeline, vkSPOCache);
@@ -1008,6 +1158,10 @@ void PipelineStateVkImpl::InitializePipeline(const RayTracingPipelineStateCreate
     std::vector<VulkanUtilities::ShaderModuleWrapper> ShaderModules;
 
     const PipelineStateVkImpl::TShaderStages                ShaderStages   = InitInternalObjects(CreateInfo, vkShaderStages, ShaderModules);
+
+    std::vector<ShaderStageSpecializationData> SpecDataPerStage;
+    BuildSpecializationData(ShaderStages, CreateInfo.NumSpecializationConstants, CreateInfo.pSpecializationConstants, m_Desc, vkShaderStages, SpecDataPerStage);
+
     const std::vector<VkRayTracingShaderGroupCreateInfoKHR> vkShaderGroups = BuildRTShaderGroupDescription(CreateInfo, m_pRayTracingPipelineData->NameToGroupIndex, ShaderStages);
     const VkPipelineCache                                   vkSPOCache     = CreateInfo.pPSOCache != nullptr ? ClassPtrCast<PipelineStateCacheVkImpl>(CreateInfo.pPSOCache)->GetVkPipelineCache() : VK_NULL_HANDLE;
 
