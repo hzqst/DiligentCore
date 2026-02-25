@@ -1759,4 +1759,117 @@ TEST_F(PSOCreationFailureTest, SpecConst_ErrorAtSecondElement)
 }
 
 
+// ---------------------------------------------------------------------------
+// Vulkan-specific negative tests for BuildSpecializationData (Name->SpecId matching).
+// These require GLSL shaders with layout(constant_id) declarations so that
+// the reflected specialization constants are available for matching.
+// ---------------------------------------------------------------------------
+
+TEST_F(PSOCreationFailureTest, SpecConst_NameNotFoundInShader)
+{
+    auto* const pEnv       = GPUTestingEnvironment::GetInstance();
+    auto* const pDevice    = pEnv->GetDevice();
+    const auto& DeviceInfo = pDevice->GetDeviceInfo();
+
+    if (!DeviceInfo.IsVulkanDevice())
+        GTEST_SKIP() << "Name->SpecId matching is currently Vulkan-only";
+    if (DeviceInfo.Features.SpecializationConstants != DEVICE_FEATURE_STATE_ENABLED)
+        GTEST_SKIP() << "Specialization constants are not supported by this device";
+
+    // GLSL vertex shader with one specialization constant named "sc_Scale".
+    static constexpr char VSSource_GLSL[] = R"(
+        #version 450
+        layout(constant_id = 0) const float sc_Scale = 1.0;
+        #ifndef GL_ES
+        out gl_PerVertex { vec4 gl_Position; };
+        #endif
+        void main()
+        {
+            gl_Position = vec4(0.0, 0.0, 0.0, sc_Scale);
+        }
+    )";
+
+    static constexpr char PSSource_GLSL[] = R"(
+        #version 450
+        layout(location = 0) out vec4 out_Color;
+        void main()
+        {
+            out_Color = vec4(0.0, 0.0, 0.0, 1.0);
+        }
+    )";
+
+    ShaderCreateInfo ShaderCI;
+    ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
+
+    RefCntAutoPtr<IShader> pVS;
+    {
+        ShaderCI.Desc   = {"SpecConst NameNotFound VS", SHADER_TYPE_VERTEX, true};
+        ShaderCI.Source = VSSource_GLSL;
+        pDevice->CreateShader(ShaderCI, &pVS);
+        ASSERT_TRUE(pVS);
+    }
+
+    RefCntAutoPtr<IShader> pPS;
+    {
+        ShaderCI.Desc   = {"SpecConst NameNotFound PS", SHADER_TYPE_PIXEL, true};
+        ShaderCI.Source = PSSource_GLSL;
+        pDevice->CreateShader(ShaderCI, &pPS);
+        ASSERT_TRUE(pPS);
+    }
+
+    const float            Data         = 2.0f;
+    SpecializationConstant SpecConsts[] = {
+        {"sc_NonExistent", SHADER_TYPE_VERTEX, sizeof(Data), &Data},
+    };
+
+    auto PsoCI{GetGraphicsPSOCreateInfo("PSO Create Failure - SpecConst NameNotFoundInShader")};
+    PsoCI.pVS                        = pVS;
+    PsoCI.pPS                        = pPS;
+    PsoCI.NumSpecializationConstants = _countof(SpecConsts);
+    PsoCI.pSpecializationConstants   = SpecConsts;
+    TestCreatePSOFailure(PsoCI, "was not found in");
+}
+
+TEST_F(PSOCreationFailureTest, SpecConst_SizeMismatch)
+{
+    auto* const pEnv       = GPUTestingEnvironment::GetInstance();
+    auto* const pDevice    = pEnv->GetDevice();
+    const auto& DeviceInfo = pDevice->GetDeviceInfo();
+
+    if (!DeviceInfo.IsVulkanDevice())
+        GTEST_SKIP() << "Name->SpecId matching is currently Vulkan-only";
+    if (DeviceInfo.Features.SpecializationConstants != DEVICE_FEATURE_STATE_ENABLED)
+        GTEST_SKIP() << "Specialization constants are not supported by this device";
+
+    // GLSL compute shader with a float specialization constant (4 bytes).
+    static constexpr char CSSource_GLSL[] = R"(
+        #version 450
+        layout(constant_id = 0) const float sc_Value = 1.0;
+        layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+        void main() {}
+    )";
+
+    ShaderCreateInfo ShaderCI;
+    ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
+    ShaderCI.Desc           = {"SpecConst SizeMismatch CS", SHADER_TYPE_COMPUTE, true};
+    ShaderCI.Source         = CSSource_GLSL;
+
+    RefCntAutoPtr<IShader> pCS;
+    pDevice->CreateShader(ShaderCI, &pCS);
+    ASSERT_TRUE(pCS);
+
+    // Provide 8 bytes for a 4-byte float constant.
+    const double           WrongSizeData = 2.0;
+    SpecializationConstant SpecConsts[]  = {
+        {"sc_Value", SHADER_TYPE_COMPUTE, sizeof(WrongSizeData), &WrongSizeData},
+    };
+
+    auto PsoCI{GetComputePSOCreateInfo("PSO Create Failure - SpecConst SizeMismatch")};
+    PsoCI.pCS                        = pCS;
+    PsoCI.NumSpecializationConstants = _countof(SpecConsts);
+    PsoCI.pSpecializationConstants   = SpecConsts;
+    TestCreatePSOFailure(PsoCI, "has size mismatch");
+}
+
+
 } // namespace
