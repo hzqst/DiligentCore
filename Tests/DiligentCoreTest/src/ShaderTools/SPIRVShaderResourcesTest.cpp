@@ -607,8 +607,8 @@ void TestSpecializationConstants(SHADER_COMPILER Compiler)
         return;
 
     SPIRVShaderResources::CreateInfo ResCI;
-    ResCI.ShaderType                  = SHADER_TYPE_PIXEL;
-    ResCI.Name                        = "SpecConstants test";
+    ResCI.ShaderType = SHADER_TYPE_PIXEL;
+    ResCI.Name       = "SpecConstants test";
     SPIRVShaderResources Resources{
         GetRawAllocator(),
         SPIRV,
