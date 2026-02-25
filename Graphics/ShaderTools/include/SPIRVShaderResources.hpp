@@ -211,7 +211,7 @@ struct SPIRVSpecializationConstantAttribs
 
     const char* const            Name;
     const uint32_t               SpecId;
-    const uint32_t               Size;      // Byte size of the scalar type
+    const uint32_t               Size; // Byte size of the scalar type
     const SHADER_CODE_BASIC_TYPE BasicType;
 };
 static_assert(sizeof(SPIRVSpecializationConstantAttribs) % sizeof(void*) == 0, "Size of SPIRVSpecializationConstantAttribs struct must be multiple of sizeof(void*)");
@@ -323,8 +323,8 @@ public:
     const SPIRVSpecializationConstantAttribs& GetSpecConstant(Uint32 n) const noexcept
     {
         VERIFY(n < m_NumSpecConstants, "Specialization constant index (", n, ") is out of range. Total spec constant count: ", m_NumSpecConstants);
-        const SPIRVShaderResourceAttribs*    ResourceMemoryEnd   = reinterpret_cast<const SPIRVShaderResourceAttribs*>(m_MemoryBuffer.get()) + GetTotalResources();
-        const SPIRVShaderStageInputAttribs*  StageInputsEnd      = reinterpret_cast<const SPIRVShaderStageInputAttribs*>(ResourceMemoryEnd) + m_NumShaderStageInputs;
+        const SPIRVShaderResourceAttribs*   ResourceMemoryEnd = reinterpret_cast<const SPIRVShaderResourceAttribs*>(m_MemoryBuffer.get()) + GetTotalResources();
+        const SPIRVShaderStageInputAttribs* StageInputsEnd    = reinterpret_cast<const SPIRVShaderStageInputAttribs*>(ResourceMemoryEnd) + m_NumShaderStageInputs;
         return reinterpret_cast<const SPIRVSpecializationConstantAttribs*>(StageInputsEnd)[n];
     }
 

@@ -635,8 +635,8 @@ void TestSpecializationConstants(SHADER_COMPILER Compiler)
 
     for (Uint32 i = 0; i < ConstResources.GetNumSpecConstants(); ++i)
     {
-        const auto& SC     = ConstResources.GetSpecConstant(i);
-        const auto  it     = RefMap.find(SC.Name);
+        const auto& SC = ConstResources.GetSpecConstant(i);
+        const auto  it = RefMap.find(SC.Name);
         ASSERT_NE(it, RefMap.end()) << "Specialization constant '" << SC.Name << "' is not found in the reference list";
 
         const auto* pRef = it->second;
