@@ -191,7 +191,6 @@ struct SPIRVShaderStageInputAttribs
     const char* const Semantic;
     const uint32_t    LocationDecorationOffset;
 };
-
 static_assert(sizeof(SPIRVShaderStageInputAttribs) % sizeof(void*) == 0, "Size of SPIRVShaderStageInputAttribs struct must be multiple of sizeof(void*)");
 
 // sizeof(SPIRVSpecializationConstantAttribs) == 24, msvc x64
