@@ -1372,8 +1372,8 @@ TEST_F(PSOCreationFailureTest, InvalidArraySize)
     ShaderCreateInfo ShaderCI;
     ShaderCI.Source                         = pDevice->GetDeviceInfo().IsWebGPUDevice() ? PSSourceWGPU : PSSource;
     ShaderCI.Desc                           = {"Invalid Array Size (PSOCreationFailureTest)", SHADER_TYPE_PIXEL, true};
-    ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_HLSL;
-    ShaderCI.ShaderCompiler = pEnv->GetDefaultCompiler(ShaderCI.SourceLanguage);
+    ShaderCI.SourceLanguage                 = SHADER_SOURCE_LANGUAGE_HLSL;
+    ShaderCI.ShaderCompiler                 = pEnv->GetDefaultCompiler(ShaderCI.SourceLanguage);
     ShaderCI.WebGPUEmulatedArrayIndexSuffix = "_";
 
     RefCntAutoPtr<IShader> pPS;

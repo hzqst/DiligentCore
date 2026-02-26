@@ -173,11 +173,11 @@ FastRandFloat SpecializationConstants::sm_Rnd{0, 0.f, 1.f};
 
 TEST_F(SpecializationConstants, ComputePath)
 {
-    auto* const pEnv       = GPUTestingEnvironment::GetInstance();
-    auto* const pDevice    = pEnv->GetDevice();
-    auto* const pContext   = pEnv->GetDeviceContext();
-    auto* const pSwapChain = pEnv->GetSwapChain();
-    const auto& DeviceInfo = pDevice->GetDeviceInfo();
+    GPUTestingEnvironment*  pEnv       = GPUTestingEnvironment::GetInstance();
+    IRenderDevice*          pDevice    = pEnv->GetDevice();
+    IDeviceContext*         pContext   = pEnv->GetDeviceContext();
+    ISwapChain*             pSwapChain = pEnv->GetSwapChain();
+    const RenderDeviceInfo& DeviceInfo = pDevice->GetDeviceInfo();
 
     if (!DeviceInfo.IsVulkanDevice())
         GTEST_SKIP() << "Specialization constants are currently Vulkan-only";
@@ -263,11 +263,11 @@ TEST_F(SpecializationConstants, ComputePath)
 
 TEST_F(SpecializationConstants, GraphicsPath)
 {
-    auto* const pEnv       = GPUTestingEnvironment::GetInstance();
-    auto* const pDevice    = pEnv->GetDevice();
-    auto* const pContext   = pEnv->GetDeviceContext();
-    auto* const pSwapChain = pEnv->GetSwapChain();
-    const auto& DeviceInfo = pDevice->GetDeviceInfo();
+    GPUTestingEnvironment*  pEnv       = GPUTestingEnvironment::GetInstance();
+    IRenderDevice*          pDevice    = pEnv->GetDevice();
+    IDeviceContext*         pContext   = pEnv->GetDeviceContext();
+    ISwapChain*             pSwapChain = pEnv->GetSwapChain();
+    const RenderDeviceInfo& DeviceInfo = pDevice->GetDeviceInfo();
 
     if (!DeviceInfo.IsVulkanDevice())
         GTEST_SKIP() << "Specialization constants are currently Vulkan-only";
