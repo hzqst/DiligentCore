@@ -1760,12 +1760,14 @@ TEST_F(PSOCreationFailureTest, SpecConst_ErrorAtSecondElement)
 
 
 // ---------------------------------------------------------------------------
-// Vulkan-specific negative tests for BuildSpecializationData (Name->SpecId matching).
+// Vulkan-specific tests for BuildSpecializationData (Name->SpecId matching).
 // These require GLSL shaders with layout(constant_id) declarations so that
 // the reflected specialization constants are available for matching.
 // ---------------------------------------------------------------------------
 
-TEST_F(PSOCreationFailureTest, SpecConst_NameNotFoundInShader)
+// Providing a user constant whose name does not match any reflected constant
+// in the shader should succeed silently (the constant is simply skipped).
+TEST_F(PSOCreationFailureTest, SpecConst_UnmatchedNameIsSkipped)
 {
     auto* const pEnv       = GPUTestingEnvironment::GetInstance();
     auto* const pDevice    = pEnv->GetDevice();
@@ -1803,7 +1805,7 @@ TEST_F(PSOCreationFailureTest, SpecConst_NameNotFoundInShader)
 
     RefCntAutoPtr<IShader> pVS;
     {
-        ShaderCI.Desc   = {"SpecConst NameNotFound VS", SHADER_TYPE_VERTEX, true};
+        ShaderCI.Desc   = {"SpecConst UnmatchedName VS", SHADER_TYPE_VERTEX, true};
         ShaderCI.Source = VSSource_GLSL;
         pDevice->CreateShader(ShaderCI, &pVS);
         ASSERT_TRUE(pVS);
@@ -1811,7 +1813,7 @@ TEST_F(PSOCreationFailureTest, SpecConst_NameNotFoundInShader)
 
     RefCntAutoPtr<IShader> pPS;
     {
-        ShaderCI.Desc   = {"SpecConst NameNotFound PS", SHADER_TYPE_PIXEL, true};
+        ShaderCI.Desc   = {"SpecConst UnmatchedName PS", SHADER_TYPE_PIXEL, true};
         ShaderCI.Source = PSSource_GLSL;
         pDevice->CreateShader(ShaderCI, &pPS);
         ASSERT_TRUE(pPS);
@@ -1819,18 +1821,22 @@ TEST_F(PSOCreationFailureTest, SpecConst_NameNotFoundInShader)
 
     const float            Data         = 2.0f;
     SpecializationConstant SpecConsts[] = {
+        // This name does not exist in the shader; it should be silently skipped.
         {"sc_NonExistent", SHADER_TYPE_VERTEX, sizeof(Data), &Data},
     };
 
-    auto PsoCI{GetGraphicsPSOCreateInfo("PSO Create Failure - SpecConst NameNotFoundInShader")};
+    auto PsoCI{GetGraphicsPSOCreateInfo("SpecConst UnmatchedNameIsSkipped")};
     PsoCI.pVS                        = pVS;
     PsoCI.pPS                        = pPS;
     PsoCI.NumSpecializationConstants = _countof(SpecConsts);
     PsoCI.pSpecializationConstants   = SpecConsts;
-    TestCreatePSOFailure(PsoCI, "was not found in");
+
+    RefCntAutoPtr<IPipelineState> pPSO;
+    pDevice->CreateGraphicsPipelineState(PsoCI, &pPSO);
+    EXPECT_NE(pPSO, nullptr) << "Unmatched specialization constant name should be silently skipped";
 }
 
-TEST_F(PSOCreationFailureTest, SpecConst_SizeMismatch)
+TEST_F(PSOCreationFailureTest, SpecConst_InsufficientData)
 {
     auto* const pEnv       = GPUTestingEnvironment::GetInstance();
     auto* const pDevice    = pEnv->GetDevice();
@@ -1856,24 +1862,24 @@ TEST_F(PSOCreationFailureTest, SpecConst_SizeMismatch)
 
     ShaderCreateInfo ShaderCI;
     ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
-    ShaderCI.Desc           = {"SpecConst SizeMismatch CS", SHADER_TYPE_COMPUTE, true};
+    ShaderCI.Desc           = {"SpecConst InsufficientData CS", SHADER_TYPE_COMPUTE, true};
     ShaderCI.Source         = CSSource_GLSL;
 
     RefCntAutoPtr<IShader> pCS;
     pDevice->CreateShader(ShaderCI, &pCS);
     ASSERT_TRUE(pCS);
 
-    // Provide 8 bytes for a 4-byte float constant.
-    const double           WrongSizeData = 2.0;
-    SpecializationConstant SpecConsts[]  = {
-        {"sc_Value", SHADER_TYPE_COMPUTE, sizeof(WrongSizeData), &WrongSizeData},
+    // Provide 2 bytes for a 4-byte float constant (insufficient).
+    const Uint16           SmallData    = 0;
+    SpecializationConstant SpecConsts[] = {
+        {"sc_Value", SHADER_TYPE_COMPUTE, sizeof(SmallData), &SmallData},
     };
 
-    auto PsoCI{GetComputePSOCreateInfo("PSO Create Failure - SpecConst SizeMismatch")};
+    auto PsoCI{GetComputePSOCreateInfo("PSO Create Failure - SpecConst InsufficientData")};
     PsoCI.pCS                        = pCS;
     PsoCI.NumSpecializationConstants = _countof(SpecConsts);
     PsoCI.pSpecializationConstants   = SpecConsts;
-    TestCreatePSOFailure(PsoCI, "has size mismatch");
+    TestCreatePSOFailure(PsoCI, "insufficient data");
 }
 
 
