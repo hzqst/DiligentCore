@@ -48,7 +48,11 @@ namespace Diligent
 {
 
 class DeviceContextVkImpl;
+
+namespace
+{
 struct ShaderStageSpecializationData;
+}
 
 /// Pipeline state object implementation in Vulkan backend.
 class PipelineStateVkImpl final : public PipelineStateBase<EngineVkImplTraits>

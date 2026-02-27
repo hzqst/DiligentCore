@@ -52,17 +52,6 @@ namespace Diligent
 
 constexpr INTERFACE_ID PipelineStateVkImpl::IID_InternalImpl;
 
-// Per-shader-stage specialization constant data for Vulkan pipeline creation.
-// Holds VkSpecializationMapEntry array, contiguous data blob, and the
-// VkSpecializationInfo that references them.  Lifetime must exceed the
-// vkCreate*Pipelines call.
-struct ShaderStageSpecializationData
-{
-    std::vector<VkSpecializationMapEntry> MapEntries;
-    std::vector<Uint8>                    DataBlob;
-    VkSpecializationInfo                  Info{};
-};
-
 namespace
 {
 
@@ -105,6 +94,16 @@ void InitPipelineShaderStages(const VulkanUtilities::LogicalDevice&             
     VERIFY_EXPR(ShaderModules.size() == Stages.size());
 }
 
+// Per-shader-stage specialization constant data for Vulkan pipeline creation.
+// Holds VkSpecializationMapEntry array, contiguous data blob, and the
+// VkSpecializationInfo that references them.  Lifetime must exceed the
+// vkCreate*Pipelines call.
+struct ShaderStageSpecializationData
+{
+    std::vector<VkSpecializationMapEntry> MapEntries;
+    std::vector<Uint8>                    DataBlob;
+    VkSpecializationInfo                  Info{};
+};
 
 // Iterates SPIR-V reflected specialization constants and matches them to
 // user-provided SpecializationConstant entries by name.  If a reflected
@@ -146,7 +145,6 @@ void BuildSpecializationData(const PipelineStateVkImpl::TShaderStages&     Shade
             const SPIRVShaderResources*    pResources = pShader->GetShaderResources().get();
             ShaderStageSpecializationData& StageData  = SpecDataPerStage[vkStageIdx];
 
-            Uint32 DataOffset = 0;
             for (Uint32 r = 0; r < pResources->GetNumSpecConstants(); ++r)
             {
                 const SPIRVSpecializationConstantAttribs& Reflected = pResources->GetSpecConstant(r);
@@ -190,14 +188,13 @@ void BuildSpecializationData(const PipelineStateVkImpl::TShaderStages&     Shade
                 // Build the map entry.
                 VkSpecializationMapEntry Entry{};
                 Entry.constantID = Reflected.SpecId;
-                Entry.offset     = DataOffset;
+                Entry.offset     = static_cast<uint32_t>(StageData.DataBlob.size());
                 Entry.size       = ConstSize;
                 StageData.MapEntries.push_back(Entry);
 
                 // Append data to the blob (only the bytes the shader needs).
                 const Uint8* pSrcData = static_cast<const Uint8*>(pUserConst->pData);
                 StageData.DataBlob.insert(StageData.DataBlob.end(), pSrcData, pSrcData + ConstSize);
-                DataOffset += ConstSize;
             }
 
             // Populate VkSpecializationInfo if any entries were matched.

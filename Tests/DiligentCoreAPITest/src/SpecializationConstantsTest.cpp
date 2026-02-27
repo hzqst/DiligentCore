@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2026 Diligent Graphics LLC
+ *  Copyright 2026 Diligent Graphics LLC
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -245,8 +245,7 @@ TEST_F(SpecializationConstants, ComputePath)
         pDevice->CreateComputePipelineState(PsoCI, &pPSO);
         ASSERT_NE(pPSO, nullptr);
 
-        pPSO->GetStaticVariableByName(SHADER_TYPE_COMPUTE, "g_tex2DUAV")
-            ->Set(pTestingSwapChain->GetCurrentBackBufferUAV());
+        pPSO->GetStaticVariableByName(SHADER_TYPE_COMPUTE, "g_tex2DUAV")->Set(pTestingSwapChain->GetCurrentBackBufferUAV());
 
         RefCntAutoPtr<IShaderResourceBinding> pSRB;
         pPSO->CreateShaderResourceBinding(&pSRB, true);
@@ -325,9 +324,9 @@ TEST_F(SpecializationConstants, GraphicsPath)
 
         // Same per-vertex colors as DrawTest_ProceduralTriangleVS:
         //   Col[0] = (1, 0, 0)  Col[1] = (0, 1, 0)  Col[2] = (0, 0, 1)
-        const float Col0_R = 1.0f, Col0_G = 0.0f, Col0_B = 0.0f;
-        const float Col1_R = 0.0f, Col1_G = 1.0f, Col1_B = 0.0f;
-        const float Col2_R = 0.0f, Col2_G = 0.0f, Col2_B = 1.0f;
+        const float3 Col0{1.0f, 0.0f, 0.0f};
+        const float3 Col1{0.0f, 1.0f, 0.0f};
+        const float3 Col2{0.0f, 0.0f, 1.0f};
 
         // PS-only constants
         const float Brightness = 1.0f;
@@ -336,15 +335,15 @@ TEST_F(SpecializationConstants, GraphicsPath)
         // clang-format off
         SpecializationConstant SpecConsts[] = {
             // sc_Col0_R is declared in both VS and PS: test cross-stage matching.
-            {"sc_Col0_R", SHADER_TYPE_VERTEX | SHADER_TYPE_PIXEL, sizeof(float), &Col0_R},
-            {"sc_Col0_G", SHADER_TYPE_VERTEX, sizeof(float), &Col0_G},
-            {"sc_Col0_B", SHADER_TYPE_VERTEX, sizeof(float), &Col0_B},
-            {"sc_Col1_R", SHADER_TYPE_VERTEX, sizeof(float), &Col1_R},
-            {"sc_Col1_G", SHADER_TYPE_VERTEX, sizeof(float), &Col1_G},
-            {"sc_Col1_B", SHADER_TYPE_VERTEX, sizeof(float), &Col1_B},
-            {"sc_Col2_R", SHADER_TYPE_VERTEX, sizeof(float), &Col2_R},
-            {"sc_Col2_G", SHADER_TYPE_VERTEX, sizeof(float), &Col2_G},
-            {"sc_Col2_B", SHADER_TYPE_VERTEX, sizeof(float), &Col2_B},
+            {"sc_Col0_R", SHADER_TYPE_VS_PS, sizeof(float), &Col0.r}, // Used in both VS and PS
+            {"sc_Col0_G", SHADER_TYPE_VS_PS, sizeof(float), &Col0.g}, // Used in VS only
+            {"sc_Col0_B", SHADER_TYPE_VS_PS, sizeof(float), &Col0.b}, // Used in VS only
+            {"sc_Col1_R", SHADER_TYPE_VERTEX, sizeof(float), &Col1.r},
+            {"sc_Col1_G", SHADER_TYPE_VERTEX, sizeof(float), &Col1.g},
+            {"sc_Col1_B", SHADER_TYPE_VERTEX, sizeof(float), &Col1.b},
+            {"sc_Col2_R", SHADER_TYPE_VERTEX, sizeof(float), &Col2.r},
+            {"sc_Col2_G", SHADER_TYPE_VERTEX, sizeof(float), &Col2.g},
+            {"sc_Col2_B", SHADER_TYPE_VERTEX, sizeof(float), &Col2.b},
             // PS-only constants
             {"sc_Brightness", SHADER_TYPE_PIXEL, sizeof(float), &Brightness},
             {"sc_AlphaScale", SHADER_TYPE_PIXEL, sizeof(float), &AlphaScale},
@@ -373,8 +372,7 @@ TEST_F(SpecializationConstants, GraphicsPath)
         pContext->SetPipelineState(pPSO);
         pContext->CommitShaderResources(pSRB, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-        DrawAttribs drawAttribs;
-        drawAttribs.NumVertices = 6;
+        DrawAttribs drawAttribs{6, DRAW_FLAG_VERIFY_ALL};
         pContext->Draw(drawAttribs);
     }
 
