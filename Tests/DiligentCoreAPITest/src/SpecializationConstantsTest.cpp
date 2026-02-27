@@ -128,16 +128,26 @@ static constexpr char g_SpecConstGraphicsVS_GLSL[] = R"(
     }
 )";
 
-// Fragment shader: pass-through interpolated color.
+// Fragment shader: interpolated color modulated by specialization constants.
+// sc_Col0_R is shared with the vertex shader (tests cross-stage matching).
+// sc_Brightness and sc_AlphaScale are PS-only.
+// To match reference: sc_Col0_R = 1.0, sc_Brightness = 1.0, sc_AlphaScale = 1.0
 static constexpr char g_SpecConstGraphicsPS_GLSL[] = R"(
     #version 450
+
+    // Shared with VS (same name, different constant_id in this module).
+    layout(constant_id = 0) const float sc_Col0_R     = -1.0;
+    // PS-only constants.
+    layout(constant_id = 1) const float sc_Brightness = -1.0;
+    layout(constant_id = 2) const float sc_AlphaScale = -1.0;
 
     layout(location = 0) in  vec3 in_Color;
     layout(location = 0) out vec4 out_Color;
 
     void main()
     {
-        out_Color = vec4(in_Color, 1.0);
+        out_Color = vec4(vec3(in_Color.r * sc_Col0_R, in_Color.gb) * sc_Brightness,
+                         sc_AlphaScale);
     }
 )";
 
@@ -319,8 +329,14 @@ TEST_F(SpecializationConstants, GraphicsPath)
         const float Col1_R = 0.0f, Col1_G = 1.0f, Col1_B = 0.0f;
         const float Col2_R = 0.0f, Col2_G = 0.0f, Col2_B = 1.0f;
 
+        // PS-only constants
+        const float Brightness = 1.0f;
+        const float AlphaScale = 1.0f;
+
+        // clang-format off
         SpecializationConstant SpecConsts[] = {
-            {"sc_Col0_R", SHADER_TYPE_VERTEX, sizeof(float), &Col0_R},
+            // sc_Col0_R is declared in both VS and PS: test cross-stage matching.
+            {"sc_Col0_R", SHADER_TYPE_VERTEX | SHADER_TYPE_PIXEL, sizeof(float), &Col0_R},
             {"sc_Col0_G", SHADER_TYPE_VERTEX, sizeof(float), &Col0_G},
             {"sc_Col0_B", SHADER_TYPE_VERTEX, sizeof(float), &Col0_B},
             {"sc_Col1_R", SHADER_TYPE_VERTEX, sizeof(float), &Col1_R},
@@ -329,7 +345,11 @@ TEST_F(SpecializationConstants, GraphicsPath)
             {"sc_Col2_R", SHADER_TYPE_VERTEX, sizeof(float), &Col2_R},
             {"sc_Col2_G", SHADER_TYPE_VERTEX, sizeof(float), &Col2_G},
             {"sc_Col2_B", SHADER_TYPE_VERTEX, sizeof(float), &Col2_B},
+            // PS-only constants
+            {"sc_Brightness", SHADER_TYPE_PIXEL, sizeof(float), &Brightness},
+            {"sc_AlphaScale", SHADER_TYPE_PIXEL, sizeof(float), &AlphaScale},
         };
+        // clang-format on
 
         GraphicsPipelineStateCreateInfo PsoCI;
         PsoCI.PSODesc.Name                                  = "SpecConst Graphics Test";
