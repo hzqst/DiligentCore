@@ -1080,7 +1080,7 @@ PipelineStateVkImpl::TShaderStages PipelineStateVkImpl::InitInternalObjects(
     const PSOCreateInfoType&                           CreateInfo,
     std::vector<VkPipelineShaderStageCreateInfo>&      vkShaderStages,
     std::vector<VulkanUtilities::ShaderModuleWrapper>& ShaderModules,
-    std::vector<ShaderStageSpecializationData>&         SpecDataPerStage) noexcept(false)
+    std::vector<ShaderStageSpecializationData>&        SpecDataPerStage) noexcept(false)
 {
     TShaderStages ShaderStages;
     ExtractShaders<ShaderVkImpl>(CreateInfo, ShaderStages, /*WaitUntilShadersReady = */ true);
@@ -1110,7 +1110,7 @@ void PipelineStateVkImpl::InitializePipeline(const GraphicsPipelineStateCreateIn
 {
     std::vector<VkPipelineShaderStageCreateInfo>      vkShaderStages;
     std::vector<VulkanUtilities::ShaderModuleWrapper> ShaderModules;
-    std::vector<ShaderStageSpecializationData>         SpecDataPerStage;
+    std::vector<ShaderStageSpecializationData>        SpecDataPerStage;
 
     InitInternalObjects(CreateInfo, vkShaderStages, ShaderModules, SpecDataPerStage);
 
@@ -1122,7 +1122,7 @@ void PipelineStateVkImpl::InitializePipeline(const ComputePipelineStateCreateInf
 {
     std::vector<VkPipelineShaderStageCreateInfo>      vkShaderStages;
     std::vector<VulkanUtilities::ShaderModuleWrapper> ShaderModules;
-    std::vector<ShaderStageSpecializationData>         SpecDataPerStage;
+    std::vector<ShaderStageSpecializationData>        SpecDataPerStage;
 
     InitInternalObjects(CreateInfo, vkShaderStages, ShaderModules, SpecDataPerStage);
 
@@ -1136,7 +1136,7 @@ void PipelineStateVkImpl::InitializePipeline(const RayTracingPipelineStateCreate
 
     std::vector<VkPipelineShaderStageCreateInfo>      vkShaderStages;
     std::vector<VulkanUtilities::ShaderModuleWrapper> ShaderModules;
-    std::vector<ShaderStageSpecializationData>         SpecDataPerStage;
+    std::vector<ShaderStageSpecializationData>        SpecDataPerStage;
 
     const TShaderStages ShaderStages = InitInternalObjects(CreateInfo, vkShaderStages, ShaderModules, SpecDataPerStage);
 
