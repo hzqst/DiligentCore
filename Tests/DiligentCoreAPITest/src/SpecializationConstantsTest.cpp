@@ -59,9 +59,9 @@ namespace
 // To match: sc_MulR=1.0, sc_MulG=1.0, sc_MulB=0.0
 static constexpr char g_SpecConstComputeCS_GLSL[] = R"(
     #version 450
-    layout(constant_id = 0) const float sc_MulR = 0.0;
-    layout(constant_id = 1) const float sc_MulG = 0.0;
-    layout(constant_id = 2) const float sc_MulB = 0.0;
+    layout(constant_id = 0) const float sc_MulR = -1.0;
+    layout(constant_id = 1) const float sc_MulG = -1.0;
+    layout(constant_id = 2) const float sc_MulB = -1.0;
 
     layout(rgba8, binding = 0) writeonly uniform image2D g_tex2DUAV;
 
@@ -93,17 +93,17 @@ static constexpr char g_SpecConstGraphicsVS_GLSL[] = R"(
     #endif
 
     // Per-vertex colors as specialization constants (3 colors x RGB).
-    layout(constant_id = 0) const float sc_Col0_R = 1.0;
+    layout(constant_id = 0) const float sc_Col0_R = 0.0;
     layout(constant_id = 1) const float sc_Col0_G = 0.0;
     layout(constant_id = 2) const float sc_Col0_B = 0.0;
 
     layout(constant_id = 3) const float sc_Col1_R = 0.0;
-    layout(constant_id = 4) const float sc_Col1_G = 1.0;
+    layout(constant_id = 4) const float sc_Col1_G = 0.0;
     layout(constant_id = 5) const float sc_Col1_B = 0.0;
 
     layout(constant_id = 6) const float sc_Col2_R = 0.0;
     layout(constant_id = 7) const float sc_Col2_G = 0.0;
-    layout(constant_id = 8) const float sc_Col2_B = 1.0;
+    layout(constant_id = 8) const float sc_Col2_B = 0.0;
 
     layout(location = 0) out vec3 out_Color;
 
