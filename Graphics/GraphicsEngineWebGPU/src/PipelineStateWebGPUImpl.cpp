@@ -128,9 +128,9 @@ void BuildSpecializationDataWebGPU(PipelineStateWebGPUImpl::TShaderStages& Shade
 
     for (size_t StageIdx = 0; StageIdx < ShaderStages.size(); ++StageIdx)
     {
-        PipelineStateWebGPUImpl::ShaderStageInfo& Stage            = ShaderStages[StageIdx];
-        const ShaderWebGPUImpl*                   pShader          = Stage.pShader;
-        const auto&                               pShaderResources = pShader->GetShaderResources();
+        PipelineStateWebGPUImpl::ShaderStageInfo&         Stage            = ShaderStages[StageIdx];
+        const ShaderWebGPUImpl*                           pShader          = Stage.pShader;
+        const std::shared_ptr<const WGSLShaderResources>& pShaderResources = pShader->GetShaderResources();
 
         if (!pShaderResources)
             continue;
@@ -783,9 +783,9 @@ void PipelineStateWebGPUImpl::InitializeWebGPUComputePipeline(const TShaderStage
     wgpuComputePipelineDesc.compute.entryPoint = GetWGPUStringView(pShaderWebGPU->GetEntryPoint());
     wgpuComputePipelineDesc.layout             = m_PipelineLayout.GetWebGPUPipelineLayout();
 
-    const auto& SpecConstEntries                  = ShaderStages[0].SpecConstEntries;
-    wgpuComputePipelineDesc.compute.constantCount = SpecConstEntries.size();
-    wgpuComputePipelineDesc.compute.constants     = SpecConstEntries.empty() ? nullptr : SpecConstEntries.data();
+    const std::vector<WGPUConstantEntry>& SpecConstEntries = ShaderStages[0].SpecConstEntries;
+    wgpuComputePipelineDesc.compute.constantCount          = SpecConstEntries.size();
+    wgpuComputePipelineDesc.compute.constants              = SpecConstEntries.empty() ? nullptr : SpecConstEntries.data();
 
     if (AsyncBuilder)
     {
