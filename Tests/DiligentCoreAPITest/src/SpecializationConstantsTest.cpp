@@ -265,8 +265,6 @@ TEST_F(SpecializationConstants, ComputePath)
     ISwapChain*             pSwapChain = pEnv->GetSwapChain();
     const RenderDeviceInfo& DeviceInfo = pDevice->GetDeviceInfo();
 
-    if (!DeviceInfo.IsVulkanDevice() && !DeviceInfo.IsWebGPUDevice())
-        GTEST_SKIP() << "Specialization constants are only supported on Vulkan and WebGPU";
     if (DeviceInfo.Features.SpecializationConstants != DEVICE_FEATURE_STATE_ENABLED)
         GTEST_SKIP() << "Specialization constants are not supported by this device";
     if (!DeviceInfo.Features.ComputeShaders)
@@ -363,8 +361,6 @@ TEST_F(SpecializationConstants, GraphicsPath)
     ISwapChain*             pSwapChain = pEnv->GetSwapChain();
     const RenderDeviceInfo& DeviceInfo = pDevice->GetDeviceInfo();
 
-    if (!DeviceInfo.IsVulkanDevice() && !DeviceInfo.IsWebGPUDevice())
-        GTEST_SKIP() << "Specialization constants are only supported on Vulkan and WebGPU";
     if (DeviceInfo.Features.SpecializationConstants != DEVICE_FEATURE_STATE_ENABLED)
         GTEST_SKIP() << "Specialization constants are not supported by this device";
 

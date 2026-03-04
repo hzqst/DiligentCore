@@ -32,6 +32,7 @@
 #include "RenderPassWebGPUImpl.hpp"
 #include "WebGPUTypeConversions.hpp"
 #include "WGSLUtils.hpp"
+#include "Float16.hpp"
 
 namespace Diligent
 {
@@ -39,7 +40,7 @@ namespace Diligent
 namespace
 {
 
-void ConvertSpecConstantToDouble(const void* pData, Uint32 DataSize, SHADER_CODE_BASIC_TYPE Type, double& OutData)
+double ConvertSpecConstantToDouble(const void* pData, Uint32 DataSize, SHADER_CODE_BASIC_TYPE Type)
 {
     switch (Type)
     {
@@ -48,72 +49,39 @@ void ConvertSpecConstantToDouble(const void* pData, Uint32 DataSize, SHADER_CODE
             // WGSL bool override: any non-zero value is true.
             Uint32 Val = 0;
             memcpy(&Val, pData, std::min(DataSize, Uint32{4}));
-            OutData = Val != 0 ? 1.0 : 0.0;
-            return;
+            return Val != 0 ? 1.0 : 0.0;
         }
+
         case SHADER_CODE_BASIC_TYPE_INT:
         {
             Int32 Val = 0;
             memcpy(&Val, pData, std::min(DataSize, Uint32{4}));
-            OutData = static_cast<double>(Val);
-            return;
+            return static_cast<double>(Val);
         }
+
         case SHADER_CODE_BASIC_TYPE_UINT:
         {
             Uint32 Val = 0;
             memcpy(&Val, pData, std::min(DataSize, Uint32{4}));
-            OutData = static_cast<double>(Val);
-            return;
+            return static_cast<double>(Val);
         }
+
         case SHADER_CODE_BASIC_TYPE_FLOAT:
         {
             float Val = 0;
             memcpy(&Val, pData, std::min(DataSize, Uint32{4}));
-            OutData = static_cast<double>(Val);
-            return;
+            return static_cast<double>(Val);
         }
+
         case SHADER_CODE_BASIC_TYPE_FLOAT16:
         {
             Uint16 HalfBits = 0;
             memcpy(&HalfBits, pData, std::min(DataSize, Uint32{2}));
-            // IEEE 754 half-precision to double conversion
-            const Uint32 Sign     = (HalfBits >> 15) & 0x1;
-            const Uint32 Exponent = (HalfBits >> 10) & 0x1F;
-            const Uint32 Mantissa = HalfBits & 0x3FF;
-            float        Result   = 0.0f;
-            if (Exponent == 0)
-            {
-                // Subnormal or zero
-                Result = std::ldexp(static_cast<float>(Mantissa), -24);
-            }
-            else if (Exponent == 0x1F)
-            {
-                // Inf or NaN
-                Result = Mantissa == 0 ? std::numeric_limits<float>::infinity() : std::numeric_limits<float>::quiet_NaN();
-            }
-            else
-            {
-                Result = std::ldexp(static_cast<float>(Mantissa + 1024), static_cast<int>(Exponent) - 25);
-            }
-            OutData = static_cast<double>(Sign ? -Result : Result);
-            return;
+            return Float16::HalfBitsToFloat(HalfBits);
         }
+
         default:
             UNEXPECTED("Unexpected specialization constant type ", GetShaderCodeBasicTypeString(Type));
-    }
-}
-
-Uint32 GetSpecConstantTypeSize(SHADER_CODE_BASIC_TYPE Type)
-{
-    switch (Type)
-    {
-        case SHADER_CODE_BASIC_TYPE_BOOL: return 4;
-        case SHADER_CODE_BASIC_TYPE_INT: return 4;
-        case SHADER_CODE_BASIC_TYPE_UINT: return 4;
-        case SHADER_CODE_BASIC_TYPE_FLOAT: return 4;
-        case SHADER_CODE_BASIC_TYPE_FLOAT16: return 2;
-        default:
-            UNEXPECTED("Unexpected specialization constant type ", static_cast<int>(Type));
             return 0;
     }
 }
@@ -157,7 +125,7 @@ void BuildSpecializationDataWebGPU(PipelineStateWebGPUImpl::TShaderStages& Shade
                 continue;
 
             const SHADER_CODE_BASIC_TYPE ReflectedType = ReflectedSC.GetType();
-            const Uint32                 ReflectedSize = GetSpecConstantTypeSize(ReflectedType);
+            const Uint32                 ReflectedSize = GetShaderCodeBasicTypeBitSize(ReflectedType) / 8;
 
             if (pUserConst->Size < ReflectedSize)
             {
@@ -173,9 +141,8 @@ void BuildSpecializationDataWebGPU(PipelineStateWebGPUImpl::TShaderStages& Shade
             }
 
             WGPUConstantEntry Entry{};
-
-            Entry.key = GetWGPUStringView(ReflectedSC.Name);
-            ConvertSpecConstantToDouble(pUserConst->pData, pUserConst->Size, ReflectedType, Entry.value);
+            Entry.key   = GetWGPUStringView(ReflectedSC.Name);
+            Entry.value = ConvertSpecConstantToDouble(pUserConst->pData, pUserConst->Size, ReflectedType);
 
             Stage.SpecConstEntries.push_back(Entry);
         }

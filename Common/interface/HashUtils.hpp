@@ -1197,7 +1197,7 @@ struct HashCombiner<HasherType, PipelineStateCreateInfo> : HashCombinerBase<Hash
         {
             for (Uint32 i = 0; i < CI.NumSpecializationConstants; ++i)
             {
-                const auto& SC = CI.pSpecializationConstants[i];
+                const SpecializationConstant& SC = CI.pSpecializationConstants[i];
                 this->m_Hasher(SC.Name, SC.ShaderStages, SC.Size);
                 if (SC.pData != nullptr && SC.Size > 0)
                     this->m_Hasher.UpdateRaw(SC.pData, SC.Size);
