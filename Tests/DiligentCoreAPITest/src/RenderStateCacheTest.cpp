@@ -2232,8 +2232,8 @@ void TestRenderStateCaches(bool CompileAsync)
                 MutableValues[i]                  = SpecConstRefDescs[i].RefValue;
                 MutableSpecConsts[i].Name         = MutableNames[i].c_str();
                 MutableSpecConsts[i].ShaderStages = SpecConstRefDescs[i].Stage;
-                MutableSpecConsts[i].pData        = &MutableValues;
-                MutableSpecConsts[i].Size         = sizeof(MutableValues);
+                MutableSpecConsts[i].pData        = &MutableValues[i];
+                MutableSpecConsts[i].Size         = sizeof(MutableValues[i]);
             }
 
             RefCntAutoPtr<IPipelineState> pMutablePSO;
@@ -2322,8 +2322,8 @@ void TestDistinctEntries(bool CompileAsync)
         for(size_t i = 0; i < SpecConstRefDescCount; ++i){
             SpecConstsB[i].Name = SpecConstRefDescs[i].Name;
             SpecConstsB[i].ShaderStages = SpecConstRefDescs[i].Stage;
-            SpecConstsB[i].pData = &SpecConstRefDescs[i].RefValue;
-            SpecConstsB[i].Size = sizeof(SpecConstRefDescs[i].RefValue);
+            SpecConstsB[i].pData = &RefValuesB[i];
+            SpecConstsB[i].Size = sizeof(RefValuesB[i]);
         }
 
         // clang-format on
