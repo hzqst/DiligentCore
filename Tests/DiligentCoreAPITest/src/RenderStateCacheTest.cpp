@@ -1922,7 +1922,7 @@ namespace SpecConstsTests
 {
 
 const std::string GraphicsVS_GLSL{
-R"(
+    R"(
 #version 450
 
 #ifndef GL_ES
@@ -2039,9 +2039,9 @@ fn main(@location(0) in_Color: vec3<f32>) -> @location(0) vec4<f32> {
 
 struct SpecConstRefAttribs
 {
-    const Char*     Name;
-    SHADER_TYPE     Stage;
-    float           RefValue;
+    const Char* Name;
+    SHADER_TYPE Stage;
+    float       RefValue;
 };
 
 // clang-format off
@@ -2063,10 +2063,10 @@ static constexpr SpecConstRefAttribs SpecConstRefDescs[] = {
 static constexpr Uint32 SpecConstRefDescCount = _countof(SpecConstRefDescs);
 
 void CreateShaders(IRenderStateCache*      pCache,
-                            bool                    PresentInCache,
-                            bool                    CompileAsync,
-                            RefCntAutoPtr<IShader>& pVS,
-                            RefCntAutoPtr<IShader>& pPS)
+                   bool                    PresentInCache,
+                   bool                    CompileAsync,
+                   RefCntAutoPtr<IShader>& pVS,
+                   RefCntAutoPtr<IShader>& pPS)
 {
     auto* const pEnv       = GPUTestingEnvironment::GetInstance();
     auto* const pDevice    = pEnv->GetDevice();
@@ -2076,7 +2076,7 @@ void CreateShaders(IRenderStateCache*      pCache,
     ShaderCI.CompileFlags = CompileAsync ? SHADER_COMPILE_FLAG_ASYNCHRONOUS : SHADER_COMPILE_FLAG_NONE;
 
     {
-        ShaderCI.Desc       = {"SpecConst Cache VS", SHADER_TYPE_VERTEX, true};
+        ShaderCI.Desc       = {"SpecConsts Cache VS", SHADER_TYPE_VERTEX, true};
         ShaderCI.EntryPoint = "main";
         if (DeviceInfo.IsWebGPUDevice())
         {
@@ -2093,7 +2093,7 @@ void CreateShaders(IRenderStateCache*      pCache,
     }
 
     {
-        ShaderCI.Desc       = {"SpecConst Cache PS", SHADER_TYPE_PIXEL, true};
+        ShaderCI.Desc       = {"SpecConsts Cache PS", SHADER_TYPE_PIXEL, true};
         ShaderCI.EntryPoint = "main";
         if (DeviceInfo.IsWebGPUDevice())
         {
@@ -2111,14 +2111,14 @@ void CreateShaders(IRenderStateCache*      pCache,
 }
 
 void CreateGraphicsPSO(IRenderStateCache*             pCache,
-                                bool                           PresentInCache,
-                                bool                           CompileAsync,
-                                const Char*                    Name,
-                                IShader*                       pVS,
-                                IShader*                       pPS,
-                                const SpecializationConstant*  pSpecConsts,
-                                Uint32                         NumSpecConsts,
-                                RefCntAutoPtr<IPipelineState>& pPSO)
+                       bool                           PresentInCache,
+                       bool                           CompileAsync,
+                       const Char*                    Name,
+                       IShader*                       pVS,
+                       IShader*                       pPS,
+                       const SpecializationConstant*  pSpecConsts,
+                       Uint32                         NumSpecConsts,
+                       RefCntAutoPtr<IPipelineState>& pPSO)
 {
     auto* pEnv       = GPUTestingEnvironment::GetInstance();
     auto* pDevice    = pEnv->GetDevice();
@@ -2187,11 +2187,12 @@ void TestRenderStateCaches(bool CompileAsync)
 
     SpecializationConstant SpecConsts[SpecConstRefDescCount];
 
-    for(size_t i = 0; i < SpecConstRefDescCount; ++i){
-        SpecConsts[i].Name = SpecConstRefDescs[i].Name;
+    for (size_t i = 0; i < SpecConstRefDescCount; ++i)
+    {
+        SpecConsts[i].Name         = SpecConstRefDescs[i].Name;
         SpecConsts[i].ShaderStages = SpecConstRefDescs[i].Stage;
-        SpecConsts[i].pData = &SpecConstRefDescs[i].RefValue;
-        SpecConsts[i].Size = sizeof(SpecConstRefDescs[i].RefValue);
+        SpecConsts[i].pData        = &SpecConstRefDescs[i].RefValue;
+        SpecConsts[i].Size         = sizeof(SpecConstRefDescs[i].RefValue);
     }
 
     RefCntAutoPtr<IShader> pUncachedVS, pUncachedPS;
@@ -2221,17 +2222,18 @@ void TestRenderStateCaches(bool CompileAsync)
 
         if (CompileAsync && pass == 0)
         {
-            std::string MutableNames[SpecConstRefDescCount];
-            float MutableValues[SpecConstRefDescCount];
+            std::string            MutableNames[SpecConstRefDescCount];
+            float                  MutableValues[SpecConstRefDescCount];
             SpecializationConstant MutableSpecConsts[SpecConstRefDescCount];
 
-            for(Uint32 i = 0; i < SpecConstRefDescCount; ++i){
-                MutableNames[i] = SpecConstRefDescs[i].Name;
-                MutableValues[i] = SpecConstRefDescs[i].RefValue;
-                MutableSpecConsts[i].Name = MutableNames[i].c_str();
+            for (Uint32 i = 0; i < SpecConstRefDescCount; ++i)
+            {
+                MutableNames[i]                   = SpecConstRefDescs[i].Name;
+                MutableValues[i]                  = SpecConstRefDescs[i].RefValue;
+                MutableSpecConsts[i].Name         = MutableNames[i].c_str();
                 MutableSpecConsts[i].ShaderStages = SpecConstRefDescs[i].Stage;
-                MutableSpecConsts[i].pData = &MutableValues;
-                MutableSpecConsts[i].Size = sizeof(MutableValues);
+                MutableSpecConsts[i].pData        = &MutableValues;
+                MutableSpecConsts[i].Size         = sizeof(MutableValues);
             }
 
             RefCntAutoPtr<IPipelineState> pMutablePSO;
@@ -2239,8 +2241,9 @@ void TestRenderStateCaches(bool CompileAsync)
             ASSERT_NE(pMutablePSO, nullptr);
 
             //Make sure the strings and data are properly copied in CreateGraphicsPSO.
-            for(Uint32 i = 0; i < SpecConstRefDescCount; ++i){
-                MutableNames[i] = SpecConstRefDescs[(i + 1) % SpecConstRefDescCount].Name;
+            for (Uint32 i = 0; i < SpecConstRefDescCount; ++i)
+            {
+                MutableNames[i]  = SpecConstRefDescs[(i + 1) % SpecConstRefDescCount].Name;
                 MutableValues[i] = SpecConstRefDescs[(i + 1) % SpecConstRefDescCount].RefValue;
             }
 
@@ -2326,38 +2329,38 @@ void TestDistinctEntries(bool CompileAsync)
         // clang-format on
 
         RefCntAutoPtr<IPipelineState> pPSO_A;
-        CreateGraphicsPSO(pCache, pData != nullptr, CompileAsync, "Spec Const Distinct Test",
-                                   pVS, pPS, SpecConstsA, _countof(SpecConstsA), pPSO_A);
+        CreateGraphicsPSO(pCache, pData != nullptr, CompileAsync, "SpecConsts Distinct Test",
+                          pVS, pPS, SpecConstsA, _countof(SpecConstsA), pPSO_A);
         ASSERT_NE(pPSO_A, nullptr);
         ASSERT_EQ(pPSO_A->GetStatus(CompileAsync), PIPELINE_STATE_STATUS_READY);
 
         RefCntAutoPtr<IPipelineState> pPSO_B;
-        CreateGraphicsPSO(pCache, pData != nullptr, CompileAsync, "Spec Const Distinct Test",
-                                   pVS, pPS, SpecConstsB, _countof(SpecConstsB), pPSO_B);
+        CreateGraphicsPSO(pCache, pData != nullptr, CompileAsync, "SpecConsts Distinct Test",
+                          pVS, pPS, SpecConstsB, _countof(SpecConstsB), pPSO_B);
         ASSERT_NE(pPSO_B, nullptr);
         ASSERT_EQ(pPSO_B->GetStatus(CompileAsync), PIPELINE_STATE_STATUS_READY);
 
         EXPECT_NE(pPSO_A, pPSO_B);
 
         RefCntAutoPtr<IPipelineState> pPSO_A2;
-        CreateGraphicsPSO(pCache, true, CompileAsync, "Spec Const Distinct Test",
-                                   pVS, pPS, SpecConstsA, _countof(SpecConstsA), pPSO_A2);
+        CreateGraphicsPSO(pCache, true, CompileAsync, "SpecConsts Distinct Test",
+                          pVS, pPS, SpecConstsA, _countof(SpecConstsA), pPSO_A2);
         ASSERT_NE(pPSO_A2, nullptr);
         ASSERT_EQ(pPSO_A2->GetStatus(CompileAsync), PIPELINE_STATE_STATUS_READY);
         if (!CompileAsync)
             EXPECT_EQ(pPSO_A, pPSO_A2);
 
         RefCntAutoPtr<IPipelineState> pPSO_B2;
-        CreateGraphicsPSO(pCache, true, CompileAsync, "Spec Const Distinct Test",
-                                   pVS, pPS, SpecConstsB, _countof(SpecConstsB), pPSO_B2);
+        CreateGraphicsPSO(pCache, true, CompileAsync, "SpecConsts Distinct Test",
+                          pVS, pPS, SpecConstsB, _countof(SpecConstsB), pPSO_B2);
         ASSERT_NE(pPSO_B2, nullptr);
         ASSERT_EQ(pPSO_B2->GetStatus(CompileAsync), PIPELINE_STATE_STATUS_READY);
         if (!CompileAsync)
             EXPECT_EQ(pPSO_B, pPSO_B2);
 
         RefCntAutoPtr<IPipelineState> pPSO_None;
-        CreateGraphicsPSO(pCache, pData != nullptr, CompileAsync, "Spec Const Distinct Test",
-                                   pVS, pPS, nullptr, 0, pPSO_None);
+        CreateGraphicsPSO(pCache, pData != nullptr, CompileAsync, "SpecConsts Distinct Test",
+                          pVS, pPS, nullptr, 0, pPSO_None);
         ASSERT_NE(pPSO_None, nullptr);
         ASSERT_EQ(pPSO_None->GetStatus(CompileAsync), PIPELINE_STATE_STATUS_READY);
         EXPECT_NE(pPSO_None, pPSO_A);
