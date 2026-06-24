@@ -326,14 +326,11 @@ public:
                                         const char* includerName,
                                         size_t /*inclusionDepth*/)
     {
-        if (m_pInputStreamFactory == nullptr || headerName == nullptr || *headerName == '\0')
+        if (m_pInputStreamFactory == nullptr)
             return nullptr;
 
         if (BasicFileSystem::IsPathAbsolute(headerName))
             return ReadIncludeFile(headerName, CREATE_SHADER_SOURCE_INPUT_STREAM_FLAG_SILENT);
-
-        if (includerName == nullptr || *includerName == '\0')
-            return nullptr;
 
         String ParentDir;
         BasicFileSystem::GetPathComponents(includerName, &ParentDir, nullptr);
