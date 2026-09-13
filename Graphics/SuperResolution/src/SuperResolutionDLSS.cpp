@@ -36,9 +36,6 @@
 namespace Diligent
 {
 
-const char*    DLSSProjectId   = "750fed3a-efba-42ba-801b-22d4cbad9148";
-const wchar_t* DLSSAppDataPath = L".";
-
 static const Char* GetOptimizationTypeName(SUPER_RESOLUTION_OPTIMIZATION_TYPE Type)
 {
     static_assert(SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT == 5, "Please update the switch below to handle the new optimization type");
@@ -91,6 +88,7 @@ Int32 ComputeDLSSFeatureFlags(SUPER_RESOLUTION_FLAGS Flags, const ExecuteSuperRe
 
 void DLSSProviderBase::EnumerateVariants(std::vector<SuperResolutionInfo>& Variants)
 {
+    NGXLock Lock;
     if (m_pNGXParams == nullptr)
         return;
 
@@ -133,6 +131,9 @@ void DLSSProviderBase::GetSourceSettings(const SuperResolutionSourceSettingsAttr
                                          SuperResolutionSourceSettings&              Settings)
 {
     Settings = {};
+    NGXLock Lock;
+    if (!m_pNGXParams)
+        return;
 
     ValidateSourceSettingsAttribs(Attribs);
 

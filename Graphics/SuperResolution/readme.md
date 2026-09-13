@@ -119,6 +119,13 @@ backend, output resolution, and optimization type.
 
 ### Creating the Factory
 
+On Windows, DLSS SR and Ray Reconstruction share `DiligentNGX_64d.dll` or
+`DiligentNGX_64r.dll`. `copy_required_dlls()` deploys this runtime automatically.
+Standalone consumers that manage DLL deployment themselves must call
+`copy_diligent_ngx_runtime(target)` as well as `copy_dlss_dlls(target)`.
+The factory and upscaler retain their NGX runtime references independently, so an
+upscaler may outlive its factory and coexist with Ray Reconstruction objects.
+
 The factory is created per render device. On Windows, the module can be loaded as a shared library:
 
 ```cpp

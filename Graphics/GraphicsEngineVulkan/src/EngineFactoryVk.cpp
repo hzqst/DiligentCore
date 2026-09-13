@@ -41,6 +41,9 @@
 #include "EngineFactoryBase.hpp"
 #include "VulkanTypeConversions.hpp"
 #include "DearchiverVkImpl.hpp"
+#if DILIGENT_NGX_RR_VULKAN
+#    include "NGXVulkan.hpp"
+#endif
 
 #if PLATFORM_ANDROID
 #    include "FileSystem.hpp"
@@ -721,6 +724,27 @@ void EngineFactoryVkImpl::CreateDeviceAndContextsVk(const EngineVkCreateInfo& En
         InstanceCI.IgnoreDebugMessageCount   = EngineCI.IgnoreDebugMessageCount;
         InstanceCI.ppIgnoreDebugMessageNames = EngineCI.ppIgnoreDebugMessageNames;
 
+        std::vector<std::string> RRInstanceExtensions, RRDeviceExtensions;
+        std::vector<const char*> InstanceExtensionNames;
+        if (EngineCI.EnableRayReconstruction)
+        {
+#if DILIGENT_NGX_RR_VULKAN
+            if (!GetNGXVulkanExtensions(VK_NULL_HANDLE, VK_NULL_HANDLE, RRInstanceExtensions, RRDeviceExtensions))
+                LOG_ERROR_AND_THROW("Failed to query NGX Ray Reconstruction Vulkan instance extensions");
+            for (Uint32 i = 0; i < EngineCI.InstanceExtensionCount; ++i)
+                InstanceExtensionNames.push_back(EngineCI.ppInstanceExtensionNames[i]);
+            for (const auto& Extension : RRInstanceExtensions)
+            {
+                if (std::none_of(InstanceExtensionNames.begin(), InstanceExtensionNames.end(), [&](const char* Name) { return Extension == Name; }))
+                    InstanceExtensionNames.push_back(Extension.c_str());
+            }
+            InstanceCI.ExtensionCount   = static_cast<Uint32>(InstanceExtensionNames.size());
+            InstanceCI.ppExtensionNames = InstanceExtensionNames.data();
+#else
+            LOG_ERROR_AND_THROW("Ray Reconstruction Vulkan support was not built");
+#endif
+        }
+
 #if DILIGENT_USE_OPENXR
         if (EngineCI.pXRAttribs != nullptr && EngineCI.pXRAttribs->Instance != 0)
         {
@@ -1355,6 +1379,21 @@ void EngineFactoryVkImpl::CreateDeviceAndContextsVk(const EngineVkCreateInfo& En
                 DeviceExtensions.push_back(EngineCI.ppDeviceExtensionNames[i]);
         }
 
+        if (EngineCI.EnableRayReconstruction)
+        {
+#if DILIGENT_NGX_RR_VULKAN
+            std::vector<std::string> IgnoredInstanceExtensions;
+            if (!GetNGXVulkanExtensions(Instance->GetVkInstance(), vkPhysDevice, IgnoredInstanceExtensions, RRDeviceExtensions))
+                LOG_ERROR_AND_THROW("Failed to query NGX Ray Reconstruction Vulkan device extensions");
+            for (const auto& Extension : RRDeviceExtensions)
+            {
+                if (!PhysicalDevice->IsExtensionSupported(Extension.c_str()))
+                    LOG_ERROR_AND_THROW("NGX Ray Reconstruction requires Vulkan device extension: ", Extension);
+                if (std::none_of(DeviceExtensions.begin(), DeviceExtensions.end(), [&](const char* Name) { return Extension == Name; }))
+                    DeviceExtensions.push_back(Extension.c_str());
+            }
+#endif
+        }
         vkDeviceCreateInfo.ppEnabledExtensionNames = DeviceExtensions.empty() ? nullptr : DeviceExtensions.data();
         vkDeviceCreateInfo.enabledExtensionCount   = static_cast<uint32_t>(DeviceExtensions.size());
 
@@ -1379,6 +1418,8 @@ void EngineFactoryVkImpl::CreateDeviceAndContextsVk(const EngineVkCreateInfo& En
             *vkDeviceCreateInfo.pEnabledFeatures,
             EnabledExtFeats,
             vkAllocator,
+            vkDeviceCreateInfo.enabledExtensionCount,
+            vkDeviceCreateInfo.ppEnabledExtensionNames,
         });
 
         IMemoryAllocator& RawMemAllocator = GetRawAllocator();

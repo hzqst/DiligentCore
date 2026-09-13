@@ -315,6 +315,7 @@ else()
 endif()
 option(DILIGENT_NO_ARCHIVER          "Do not build archiver" OFF)
 option(DILIGENT_NO_SUPER_RESOLUTION  "Do not build super resolution" OFF)
+option(DILIGENT_NO_RAY_RECONSTRUCTION "Do not build ray reconstruction" OFF)
 
 set(DILIGENT_SANITIZER "" CACHE STRING "Enable sanitizer: address or thread")
 set_property(CACHE DILIGENT_SANITIZER PROPERTY STRINGS "" address thread)

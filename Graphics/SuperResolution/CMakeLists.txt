@@ -4,7 +4,6 @@ include(../../BuildTools/CMake/BuildUtils.cmake)
 
 project(Diligent-SuperResolution CXX)
 
-set(DILIGENT_DLSS_SUPPORTED FALSE CACHE INTERNAL "DLSS is not supported")
 set(DILIGENT_DSR_SUPPORTED  FALSE CACHE INTERNAL "DirectSR is not supported")
 set(DILIGENT_FSR_SUPPORTED  TRUE CACHE INTERNAL "FSR is not supported")
 
@@ -39,14 +38,6 @@ if(DILIGENT_DSR_SUPPORTED)
     endif()
 endif()
 
-if(DILIGENT_DLSS_SUPPORTED)
-    # Fetch NVIDIA DLSS SDK headers
-    FetchContent_DeclareShallowGit(DLSS-Headers
-        GIT_REPOSITORY https://github.com/DiligentGraphics/DLSS-Headers.git
-        GIT_TAG        master
-    )
-    FetchContent_MakeAvailable(DLSS-Headers)
-endif()
 
 set(INCLUDE
     include/SuperResolutionBase.hpp
@@ -196,7 +187,8 @@ if(DILIGENT_DSR_SUPPORTED)
 endif()
 
 if(DILIGENT_DLSS_SUPPORTED)
-    target_link_libraries(Diligent-SuperResolution-static PRIVATE DLSS-Headers DLSS-NGX)
+    target_link_libraries(Diligent-SuperResolution-static PRIVATE Diligent-NGX-shared)
+    copy_diligent_ngx_runtime(Diligent-SuperResolution-shared)
 
     if(D3D12_SUPPORTED)
         target_link_libraries(Diligent-SuperResolution-static PRIVATE Diligent-GraphicsEngineD3D12Interface)

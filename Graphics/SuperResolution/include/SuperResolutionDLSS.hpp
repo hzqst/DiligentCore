@@ -30,6 +30,7 @@
 /// Shared DLSS utilities used by per-API DLSS backend implementations.
 
 #include <vector>
+#include <algorithm>
 
 #include <nvsdk_ngx_defs.h>
 #include <nvsdk_ngx_params.h>
@@ -37,14 +38,12 @@
 #include "SuperResolutionFactory.h"
 #include "SuperResolutionProvider.hpp"
 #include "SuperResolutionBase.hpp"
+#include "NGXRuntime.hpp"
 
 struct NVSDK_NGX_Parameter;
 
 namespace Diligent
 {
-
-extern const char*    DLSSProjectId;
-extern const wchar_t* DLSSAppDataPath;
 
 /// Maps Diligent optimization type to NGX performance/quality preset.
 NVSDK_NGX_PerfQuality_Value OptimizationTypeToNGXPerfQuality(SUPER_RESOLUTION_OPTIMIZATION_TYPE Type);
@@ -62,6 +61,8 @@ public:
     virtual void GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs, SuperResolutionSourceSettings& Settings) override final;
 
 protected:
+    RefCntAutoPtr<IRenderDevice> m_pDevice;
+    std::shared_ptr<NGXRuntime>  m_Runtime;
     NVSDK_NGX_Parameter* m_pNGXParams = nullptr;
 };
 
@@ -69,31 +70,48 @@ template <auto CreateFeature, auto ReleaseFeature>
 class SuperResolutionDLSS : public SuperResolutionBase
 {
 public:
-    SuperResolutionDLSS(IReferenceCounters*        pRefCounters,
-                        const SuperResolutionDesc& Desc,
-                        const SuperResolutionInfo& Info,
-                        NVSDK_NGX_Parameter*       pNGXParams) :
+    SuperResolutionDLSS(IReferenceCounters*         pRefCounters,
+                        const SuperResolutionDesc&  Desc,
+                        const SuperResolutionInfo&  Info,
+                        IRenderDevice*              pDevice,
+                        std::shared_ptr<NGXRuntime> Runtime) :
         SuperResolutionBase{pRefCounters, Desc, Info},
-        m_pNGXParams{pNGXParams}
+        m_pDevice{pDevice},
+        m_Runtime{std::move(Runtime)},
+        m_pNGXParams{AllocateNGXParameters(*m_Runtime)}
     {
+        if (!m_pNGXParams)
+            LOG_ERROR_AND_THROW("Failed to allocate DLSS feature parameters");
         PopulateHaltonJitterPattern(m_JitterPattern, 64);
     }
 
     ~SuperResolutionDLSS()
     {
+        NGXLock Lock;
         if (m_pDLSSFeature != nullptr)
+        {
+            for (auto& Context : m_Contexts)
+                Context->Flush();
+            m_pDevice->IdleGPU();
             ReleaseFeature(m_pDLSSFeature);
+        }
+        DestroyNGXParameters(*m_Runtime, m_pNGXParams);
     }
 
 protected:
     NVSDK_NGX_Handle* AcquireFeature(const ExecuteSuperResolutionAttribs& Attribs)
     {
+        if (std::none_of(m_Contexts.begin(), m_Contexts.end(), [&](const RefCntAutoPtr<IDeviceContext>& Context) { return Context == Attribs.pContext; }))
+            m_Contexts.emplace_back(Attribs.pContext);
         const Int32 DLSSCreateFeatureFlags = ComputeDLSSFeatureFlags(m_Desc.Flags, Attribs);
         if (m_pDLSSFeature != nullptr && m_DLSSFeatureFlags == DLSSCreateFeatureFlags)
             return m_pDLSSFeature;
 
         if (m_pDLSSFeature != nullptr)
         {
+            for (auto& Context : m_Contexts)
+                Context->Flush();
+            m_pDevice->IdleGPU();
             ReleaseFeature(m_pDLSSFeature);
             m_pDLSSFeature = nullptr;
         }
@@ -118,11 +136,14 @@ protected:
     }
 
 protected:
+    RefCntAutoPtr<IRenderDevice> m_pDevice;
+    std::shared_ptr<NGXRuntime>  m_Runtime;
     NVSDK_NGX_Parameter* const m_pNGXParams;
 
 private:
     NVSDK_NGX_Handle* m_pDLSSFeature     = nullptr;
     Int32             m_DLSSFeatureFlags = 0;
+    std::vector<RefCntAutoPtr<IDeviceContext>> m_Contexts;
 };
 
 } // namespace Diligent

@@ -4048,6 +4048,10 @@ typedef struct DeviceFeaturesVk DeviceFeaturesVk;
 /// Attributes specific to Vulkan engine
 struct EngineVkCreateInfo DILIGENT_DERIVE(EngineCreateInfo)
 
+    /// Explicitly enable NGX Ray Reconstruction extensions before instance/device creation.
+    /// Requires the Windows x64 RayReconstruction module. Fails creation if requirements cannot be met.
+    Bool EnableRayReconstruction DEFAULT_INITIALIZER(False);
+
     /// Vulkan-specific device features, see Diligent::DeviceFeaturesVk.
     DeviceFeaturesVk   FeaturesVk;
 

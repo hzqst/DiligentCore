@@ -43,10 +43,10 @@ extern "C"
 namespace
 {
 
-static ISuperResolutionFactory* GetFactory()
+static RefCntAutoPtr<ISuperResolutionFactory> GetFactory()
 {
     auto*                                         pDevice = GPUTestingEnvironment::GetInstance()->GetDevice();
-    static RefCntAutoPtr<ISuperResolutionFactory> pFactory;
+    RefCntAutoPtr<ISuperResolutionFactory>        pFactory;
     if (!pFactory)
         LoadAndCreateSuperResolutionFactory(pDevice, &pFactory);
     return pFactory;
@@ -64,7 +64,7 @@ static const SuperResolutionInfo* FindVariantByType(const SuperResolutionInfo* p
 
 TEST(SuperResolutionTest, EnumerateVariants)
 {
-    auto* pFactory = GetFactory();
+    auto pFactory = GetFactory();
     ASSERT_NE(pFactory, nullptr);
 
     Uint32 NumVariants = 0;
@@ -86,7 +86,7 @@ TEST(SuperResolutionTest, EnumerateVariants)
 
 TEST(SuperResolutionTest, QuerySourceSettings)
 {
-    auto* pFactory = GetFactory();
+    auto pFactory = GetFactory();
     ASSERT_NE(pFactory, nullptr);
 
     Uint32 NumVariants = 0;
@@ -147,7 +147,7 @@ TEST(SuperResolutionTest, QuerySourceSettings)
 
 TEST(SuperResolutionTest, CreateTemporalUpscaler)
 {
-    auto* pFactory = GetFactory();
+    auto pFactory = GetFactory();
     ASSERT_NE(pFactory, nullptr);
 
     Uint32 NumVariants = 0;
@@ -221,7 +221,7 @@ TEST(SuperResolutionTest, ExecuteTemporalUpscaler)
 {
     auto* pEnv     = GPUTestingEnvironment::GetInstance();
     auto* pDevice  = pEnv->GetDevice();
-    auto* pFactory = GetFactory();
+    auto  pFactory = GetFactory();
     ASSERT_NE(pFactory, nullptr);
 
     Uint32 NumVariants = 0;
@@ -367,14 +367,14 @@ TEST(SuperResolutionTest, ExecuteTemporalUpscaler)
 
 TEST(SuperResolution_CInterface, Factory)
 {
-    auto* pFactory = GetFactory();
+    auto pFactory = GetFactory();
     ASSERT_NE(pFactory, nullptr);
     EXPECT_EQ(TestSuperResolutionFactoryCInterface(pFactory), 0);
 }
 
 TEST(SuperResolution_CInterface, SuperResolution)
 {
-    auto* pFactory = GetFactory();
+    auto pFactory = GetFactory();
     ASSERT_NE(pFactory, nullptr);
 
     Uint32 NumVariants = 0;
