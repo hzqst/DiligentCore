@@ -35,7 +35,11 @@ public:
     }
     void PrepareContext(IDeviceContext* Context) const override
     {
-        ClassPtrCast<DeviceContextVkImpl>(Context)->GetCommandBuffer().EndRenderScope();
+        // Submit through the owning engine module. Calling its inline command-
+        // buffer helpers here would use this module's uninitialized Vulkan
+        // dispatch table when RR and the graphics engine are separate DLLs.
+        // Flush also ends implicit rendering before RR's resource transitions.
+        Context->Flush();
     }
     void ReleaseFeature(NVSDK_NGX_Handle* Feature) override
     {

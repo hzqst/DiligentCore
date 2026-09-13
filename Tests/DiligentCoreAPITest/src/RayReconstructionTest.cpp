@@ -194,7 +194,13 @@ TEST(RayReconstructionTest, EvaluateAndReadback)
         Desc.RoughnessPacked = Quality == RAY_RECONSTRUCTION_QUALITY_NATIVE;
         RefCntAutoPtr<IRayReconstruction> RR, OtherRR;
         Factory->CreateRayReconstruction(Desc, &RR);
-        Factory->CreateRayReconstruction(Desc, &OtherRR);
+        auto CreateShared = reinterpret_cast<CreateRayReconstructionFactoryType>(LoadEngineDll("RayReconstruction", "CreateRayReconstructionFactory"));
+        ASSERT_NE(nullptr, CreateShared);
+        RefCntAutoPtr<IRayReconstructionFactory> SharedFactory;
+        CreateShared(Device, &SharedFactory);
+        ASSERT_NE(nullptr, SharedFactory);
+        SharedFactory->CreateRayReconstruction(Desc, &OtherRR);
+        SharedFactory.Release();
         ASSERT_NE(nullptr, RR);
         ASSERT_NE(nullptr, OtherRR);
         Factory.Release();
@@ -327,6 +333,9 @@ TEST(RayReconstructionTest, EvaluateAndReadback)
             Context->ClearRenderTarget(RTV, Sentinel, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
             Context->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
             Context->Flush(); // A dropped RR command buffer must leave a detectable zero output.
+            // Leave a real barrier queued, as compute-produced RR guides do.
+            StateTransitionDesc PendingBarrier{Output, RESOURCE_STATE_UNKNOWN, RESOURCE_STATE_UNORDERED_ACCESS, STATE_TRANSITION_FLAG_UPDATE_STATE};
+            Context->TransitionResourceStates(1, &PendingBarrier);
             RR->GetJitterOffset(Frame, A.JitterX, A.JitterY);
             A.ResetHistory              = Frame == 2;
             A.pSpecularHitDistanceSRV   = Frame == 0 ? A.pDepthSRV : nullptr;
@@ -335,6 +344,12 @@ TEST(RayReconstructionTest, EvaluateAndReadback)
             ASSERT_TRUE(RR->Execute(A));
             Context->Flush();
         }
+        // The shared RR module must flush through the owning engine's virtual
+        // context API, not an inline helper using another module's Vulkan loader.
+        StateTransitionDesc PendingBarriers[] = {
+            {Output, RESOURCE_STATE_UNKNOWN, RESOURCE_STATE_COPY_SOURCE, STATE_TRANSITION_FLAG_UPDATE_STATE},
+            {Output, RESOURCE_STATE_COPY_SOURCE, RESOURCE_STATE_UNORDERED_ACCESS, STATE_TRANSITION_FLAG_UPDATE_STATE}};
+        Context->TransitionResourceStates(2, PendingBarriers);
         ASSERT_TRUE(OtherRR->Execute(A));
         Context->Flush();
         OtherRR.Release();
