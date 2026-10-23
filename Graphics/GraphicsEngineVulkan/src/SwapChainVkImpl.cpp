@@ -342,10 +342,9 @@ void SwapChainVkImpl::CreateVulkanSwapChain()
         }
         else
         {
-            // Prefer immediate presentation with VSync disabled. MAILBOX image acquisition
-            // may still be paced by the window compositor on some drivers.
-            PreferredPresentModes.push_back(VK_PRESENT_MODE_IMMEDIATE_KHR);
+            // Mailbox is the lowest latency non-tearing presentation mode.
             PreferredPresentModes.push_back(VK_PRESENT_MODE_MAILBOX_KHR);
+            PreferredPresentModes.push_back(VK_PRESENT_MODE_IMMEDIATE_KHR);
             PreferredPresentModes.push_back(VK_PRESENT_MODE_FIFO_KHR);
         }
 
