@@ -73,6 +73,7 @@ public:
 
     ~SwapChainD3DBase()
     {
+        ReleaseFrameLatencyWaitableObject();
         if (m_pSwapChain)
         {
             // Swap chain must be in windowed mode when it is destroyed
@@ -85,6 +86,15 @@ public:
     }
 
 protected:
+    void ReleaseFrameLatencyWaitableObject()
+    {
+        if (m_FrameLatencyWaitableObject != NULL)
+        {
+            CloseHandle(m_FrameLatencyWaitableObject);
+            m_FrameLatencyWaitableObject = NULL;
+        }
+    }
+
     virtual void UpdateSwapChain(bool CreateNew) = 0;
 
     bool Resize(Uint32 NewWidth, Uint32 NewHeight, SURFACE_TRANSFORM NewPreTransform, Int32 Dummy = 0 /*To be different from virtual function*/)
@@ -268,6 +278,7 @@ protected:
         hr = pSwapChain1.QueryInterface(&m_pSwapChain);
         CHECK_D3D_RESULT_THROW(hr, "Failed to query the required swap chain interface");
 
+        ReleaseFrameLatencyWaitableObject();
         if ((swapChainDesc.Flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT) != 0)
         {
             CComPtr<IDXGISwapChain2> pSwapChain2;
