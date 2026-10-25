@@ -84,12 +84,14 @@ public:
         const SHADER_TYPE       Type;
         ShaderWebGPUImpl* const pShader;
         std::string             PatchedWGSL;
+        std::string             PatchedEntryPoint;
 
         // Per-stage specialization constant entries, built from user input
         // and WGSL override reflection during InitializePipeline().
-        // Entries reference names in the shader resource name pool,
-        // which is kept alive by ShaderWebGPUImpl.
+        // Keys reference either the shader's name pool or SpecConstKeys below.
+        // Both remain alive when the stages are moved into AsyncPipelineBuilder.
         std::vector<WGPUConstantEntry> SpecConstEntries;
+        std::vector<std::string>       SpecConstKeys;
 
         ShaderStageInfo(ShaderWebGPUImpl* _pShader) :
             Type{_pShader->GetDesc().ShaderType},
@@ -99,6 +101,11 @@ public:
         const std::string& GetWGSL() const
         {
             return PatchedWGSL.empty() ? pShader->GetWGSL() : PatchedWGSL;
+        }
+
+        const char* GetEntryPoint() const
+        {
+            return PatchedEntryPoint.empty() ? pShader->GetEntryPoint() : PatchedEntryPoint.c_str();
         }
 
         friend SHADER_TYPE GetShaderStageType(const ShaderStageInfo& Stage) { return Stage.Type; }

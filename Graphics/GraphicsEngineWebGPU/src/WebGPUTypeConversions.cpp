@@ -1,5 +1,5 @@
 /*
- *  Copyright 2023-2024 Diligent Graphics LLC
+ *  Copyright 2023-2026 Diligent Graphics LLC
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,11 +27,12 @@
 #include "pch.h"
 
 #include "WebGPUTypeConversions.hpp"
-#include "WebGPUStubs.hpp"
+#include "WebGPUDefinitions.hpp"
 #include "DebugUtilities.hpp"
 #include "GraphicsAccessories.hpp"
 
-#define WEBGPU_FORMAT_RANGE_SIZE (WGPUTextureFormat_RGBA16Snorm - WGPUTextureFormat_Undefined + 1)
+// Normalized 16-bit formats precede the compressed formats in the current WebGPU enum.
+#define WEBGPU_FORMAT_RANGE_SIZE (WGPUTextureFormat_ASTC12x12UnormSrgb - WGPUTextureFormat_Undefined + 1)
 
 namespace Diligent
 {
@@ -952,6 +953,31 @@ WGPUVertexStepMode InputElementFrequencyToWGPUVertexStepMode(INPUT_ELEMENT_FREQU
             UNEXPECTED("Unexpected input element frequency");
             return WGPUVertexStepMode_Vertex;
     }
+}
+
+WGPUComponentSwizzle TextureComponentSwizzleToWGPUComponentSwizzle(TEXTURE_COMPONENT_SWIZZLE Swizzle)
+{
+    static_assert(TEXTURE_COMPONENT_SWIZZLE_COUNT == 7, "Did you add a new swizzle type? Please handle it here.");
+    // clang-format off
+    static_assert(static_cast<WGPUComponentSwizzle>(TEXTURE_COMPONENT_SWIZZLE_IDENTITY) == WGPUComponentSwizzle_Undefined, "Unexpected value of TEXTURE_COMPONENT_SWIZZLE_IDENTITY enum.");
+    static_assert(static_cast<WGPUComponentSwizzle>(TEXTURE_COMPONENT_SWIZZLE_ZERO)     == WGPUComponentSwizzle_Zero,      "Unexpected value of TEXTURE_COMPONENT_SWIZZLE_ZERO enum.");
+    static_assert(static_cast<WGPUComponentSwizzle>(TEXTURE_COMPONENT_SWIZZLE_ONE)      == WGPUComponentSwizzle_One,       "Unexpected value of TEXTURE_COMPONENT_SWIZZLE_ONE enum.");
+    static_assert(static_cast<WGPUComponentSwizzle>(TEXTURE_COMPONENT_SWIZZLE_R)        == WGPUComponentSwizzle_R,         "Unexpected value of TEXTURE_COMPONENT_SWIZZLE_R enum.");
+    static_assert(static_cast<WGPUComponentSwizzle>(TEXTURE_COMPONENT_SWIZZLE_G)        == WGPUComponentSwizzle_G,         "Unexpected value of TEXTURE_COMPONENT_SWIZZLE_G enum.");
+    static_assert(static_cast<WGPUComponentSwizzle>(TEXTURE_COMPONENT_SWIZZLE_B)        == WGPUComponentSwizzle_B,         "Unexpected value of TEXTURE_COMPONENT_SWIZZLE_B enum.");
+    static_assert(static_cast<WGPUComponentSwizzle>(TEXTURE_COMPONENT_SWIZZLE_A)        == WGPUComponentSwizzle_A,         "Unexpected value of TEXTURE_COMPONENT_SWIZZLE_A enum.");
+    // clang-format on
+    return static_cast<WGPUComponentSwizzle>(Swizzle);
+}
+
+WGPUTextureComponentSwizzle TextureComponentMappingToWGPUTextureComponentSwizzle(const TextureComponentMapping& Mapping)
+{
+    return WGPUTextureComponentSwizzle{
+        TextureComponentSwizzleToWGPUComponentSwizzle(Mapping.R),
+        TextureComponentSwizzleToWGPUComponentSwizzle(Mapping.G),
+        TextureComponentSwizzleToWGPUComponentSwizzle(Mapping.B),
+        TextureComponentSwizzleToWGPUComponentSwizzle(Mapping.A) //
+    };
 }
 
 } // namespace Diligent

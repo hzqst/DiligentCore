@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,6 +31,7 @@
 /// Additional math functions and structures.
 
 #include <float.h>
+#include <limits>
 #include <vector>
 #include <type_traits>
 
@@ -1261,7 +1262,10 @@ enum TRIANGULATE_POLYGON_RESULT : Uint32
     TRIANGULATE_POLYGON_RESULT_INVALID_EAR = 1u << 3u,
 
     /// No ear vertex was found at one of the steps.
-    TRIANGULATE_POLYGON_RESULT_NO_EAR_FOUND = 1u << 4u
+    TRIANGULATE_POLYGON_RESULT_NO_EAR_FOUND = 1u << 4u,
+
+    /// The polygon's vertex indices do not fit IndexType, or its vertex count does not fit int.
+    TRIANGULATE_POLYGON_RESULT_TOO_MANY_VERTS = 1u << 5u
 };
 DEFINE_FLAG_ENUM_OPERATORS(TRIANGULATE_POLYGON_RESULT);
 
@@ -1295,13 +1299,21 @@ public:
         m_Result = TRIANGULATE_POLYGON_RESULT_OK;
         m_Triangles.clear();
 
-        const int VertCount = static_cast<int>(Polygon.size());
-        if (VertCount <= 2)
+        if (Polygon.size() <= 2)
         {
             m_Result = TRIANGULATE_POLYGON_RESULT_TOO_FEW_VERTS;
             return m_Triangles;
         }
+        // The vertex count must fit int, so cap the last index at INT_MAX - 1.
+        constexpr size_t MaxIndex = (std::min)(static_cast<size_t>((std::numeric_limits<IndexType>::max)()),
+                                               static_cast<size_t>((std::numeric_limits<int>::max)()) - 1);
+        if (Polygon.size() > MaxIndex + 1)
+        {
+            m_Result = TRIANGULATE_POLYGON_RESULT_TOO_MANY_VERTS;
+            return m_Triangles;
+        }
 
+        const int VertCount     = static_cast<int>(Polygon.size());
         const int TriangleCount = VertCount - 2;
         if (TriangleCount == 1)
         {
@@ -1359,16 +1371,16 @@ public:
         m_VertTypes.resize(VertCount);
         for (int i = 0; i < VertCount; ++i)
         {
-            m_RemainingVertIds[i] = i;
+            m_RemainingVertIds[i] = static_cast<IndexType>(i);
             m_VertTypes[i]        = VertexType::Convexx;
         }
 
         auto CheckConvex = [&](int vert_id) {
             const int RemainingVertCount = static_cast<int>(m_RemainingVertIds.size());
 
-            const int Idx0 = m_RemainingVertIds[WrapIndex(vert_id - 1, RemainingVertCount)];
-            const int Idx1 = m_RemainingVertIds[WrapIndex(vert_id + 0, RemainingVertCount)];
-            const int Idx2 = m_RemainingVertIds[WrapIndex(vert_id + 1, RemainingVertCount)];
+            const IndexType Idx0 = m_RemainingVertIds[WrapIndex(vert_id - 1, RemainingVertCount)];
+            const IndexType Idx1 = m_RemainingVertIds[WrapIndex(vert_id + 0, RemainingVertCount)];
+            const IndexType Idx2 = m_RemainingVertIds[WrapIndex(vert_id + 1, RemainingVertCount)];
 
             const auto& V0 = Polygon[Idx0];
             const auto& V1 = Polygon[Idx1];
@@ -1382,39 +1394,30 @@ public:
         auto CheckEar = [&](int vert_id) {
             const int RemainingVertCount = static_cast<int>(m_RemainingVertIds.size());
 
-            const int Idx0 = m_RemainingVertIds[WrapIndex(vert_id - 1, RemainingVertCount)];
-            const int Idx1 = m_RemainingVertIds[WrapIndex(vert_id + 0, RemainingVertCount)];
-            const int Idx2 = m_RemainingVertIds[WrapIndex(vert_id + 1, RemainingVertCount)];
+            const IndexType Idx0 = m_RemainingVertIds[WrapIndex(vert_id - 1, RemainingVertCount)];
+            const IndexType Idx1 = m_RemainingVertIds[WrapIndex(vert_id + 0, RemainingVertCount)];
+            const IndexType Idx2 = m_RemainingVertIds[WrapIndex(vert_id + 1, RemainingVertCount)];
 
             VERIFY_EXPR(m_VertTypes[Idx1] == VertexType::Convexx);
 
             const auto& V0 = Polygon[Idx0];
             const auto& V1 = Polygon[Idx1];
             const auto& V2 = Polygon[Idx2];
+            // A reflex vertex on a nondegenerate ear's diagonal must block
+            // clipping, or the diagonal can cut through a concave boundary.
+            // Degenerate ears still need to be removable with collinear vertices.
+            const bool AllowEdges = GetWinding(V0, V1, V2) != 0;
 
-            for (const int Idx : m_RemainingVertIds)
+            for (const IndexType Idx : m_RemainingVertIds)
             {
                 if (Idx == Idx0 || Idx == Idx1 || Idx == Idx2)
                     continue;
 
+                // Only reflex vertices can disqualify an ear candidate.
                 if (m_VertTypes[Idx] == VertexType::Convexx || m_VertTypes[Idx] == VertexType::Ear)
-                {
-#ifdef DILIGENT_DEVELOPMENT
-                    // This check may fail due to floating point imprecision if there are collinear vertices.
-                    if (IsPointInsideTriangle(V0, V1, V2, Polygon[Idx], /*AllowEdges = */ false))
-                    {
-                        // Convex and ear vertices must always be outside the triangle
-                        m_Result |= (m_VertTypes[Idx] == VertexType::Convexx) ?
-                            TRIANGULATE_POLYGON_RESULT_INVALID_CONVEX :
-                            TRIANGULATE_POLYGON_RESULT_INVALID_EAR;
-                    }
-#endif
                     continue;
-                }
 
-                // Do not treat vertices exactly on the edge as inside the triangle,
-                // so that we can clip out degenerate triangles.
-                if (IsPointInsideTriangle(V0, V1, V2, Polygon[Idx], /*AllowEdges = */ false))
+                if (IsPointInsideTriangle(V0, V1, V2, Polygon[Idx], AllowEdges))
                 {
                     // The vertex is inside the triangle
                     return VertexType::Convexx;
@@ -1425,9 +1428,29 @@ public:
         };
 
         // First label vertices as reflex or convex
+        bool IsConvex = true;
         for (int vert_id = 0; vert_id < VertCount; ++vert_id)
         {
             m_VertTypes[vert_id] = CheckConvex(vert_id);
+            if (m_VertTypes[vert_id] == VertexType::Reflex)
+                IsConvex = false;
+        }
+
+        m_Triangles.reserve(TriangleCount * 3);
+        if (IsConvex)
+        {
+            // All vertices are ears. Emit the fan in linear time, preserving
+            // the triangle order produced by clipping the first ear repeatedly.
+            for (int i = 0; i < VertCount - 3; ++i)
+            {
+                m_Triangles.emplace_back(static_cast<IndexType>(VertCount - 1));
+                m_Triangles.emplace_back(static_cast<IndexType>(i));
+                m_Triangles.emplace_back(static_cast<IndexType>(i + 1));
+            }
+            m_Triangles.emplace_back(static_cast<IndexType>(VertCount - 3));
+            m_Triangles.emplace_back(static_cast<IndexType>(VertCount - 2));
+            m_Triangles.emplace_back(static_cast<IndexType>(VertCount - 1));
+            return m_Triangles;
         }
 
         // Next, check convex vertices for ears
@@ -1438,9 +1461,6 @@ public:
                 VertType = CheckEar(vert_id);
         }
 
-        m_Triangles.clear();
-        m_Triangles.reserve(TriangleCount * 3);
-
         // Clip ears one by one until only three vertices are left
         while (m_RemainingVertIds.size() > 3)
         {
@@ -1450,7 +1470,7 @@ public:
             int ear_vert_id = 0;
             for (; ear_vert_id < RemainingVertCount; ++ear_vert_id)
             {
-                const int Idx = m_RemainingVertIds[ear_vert_id];
+                const IndexType Idx = m_RemainingVertIds[ear_vert_id];
                 if (m_VertTypes[Idx] == VertexType::Ear)
                     break;
             };
@@ -1462,9 +1482,9 @@ public:
                 ear_vert_id = 0;
             }
 
-            const int Idx0 = m_RemainingVertIds[WrapIndex(ear_vert_id - 1, RemainingVertCount)];
-            const int Idx1 = m_RemainingVertIds[ear_vert_id];
-            const int Idx2 = m_RemainingVertIds[WrapIndex(ear_vert_id + 1, RemainingVertCount)];
+            const IndexType Idx0 = m_RemainingVertIds[WrapIndex(ear_vert_id - 1, RemainingVertCount)];
+            const IndexType Idx1 = m_RemainingVertIds[ear_vert_id];
+            const IndexType Idx2 = m_RemainingVertIds[WrapIndex(ear_vert_id + 1, RemainingVertCount)];
 
             m_Triangles.emplace_back(Idx0);
             m_Triangles.emplace_back(Idx1);
@@ -1475,8 +1495,8 @@ public:
             // Update adjacent vertices
             if (RemainingVertCount > 3)
             {
-                const int IdxL = m_RemainingVertIds[WrapIndex(ear_vert_id - 1, RemainingVertCount)];
-                const int IdxR = m_RemainingVertIds[WrapIndex(ear_vert_id, RemainingVertCount)];
+                const IndexType IdxL = m_RemainingVertIds[WrapIndex(ear_vert_id - 1, RemainingVertCount)];
+                const IndexType IdxR = m_RemainingVertIds[WrapIndex(ear_vert_id, RemainingVertCount)];
                 // First check for convex vs reflex
                 m_VertTypes[IdxL] = CheckConvex(ear_vert_id - 1);
                 m_VertTypes[IdxR] = CheckConvex(ear_vert_id);
@@ -1521,14 +1541,14 @@ private:
     std::vector<VertexType> m_VertTypes;
 
     // Remaining vertices to process
-    std::vector<int> m_RemainingVertIds;
+    std::vector<IndexType> m_RemainingVertIds;
 };
 
 
 /// 3D polygon triangulator.
 
 /// The class extends the Polygon2DTriangulator class to handle simple 3D polygons.
-/// It first projects the polygon onto a plane and then triangulates the resulting 2D polygon.
+/// It first projects the polygon onto a coordinate plane and then triangulates the resulting 2D polygon.
 ///
 /// \tparam IndexType     - Index type (e.g. Uint32 or Uint16).
 /// \tparam ComponentType - Vertex component type, must be a floating point type (e.g. float or double).
@@ -1538,7 +1558,7 @@ class Polygon3DTriangulator : public Polygon2DTriangulator<typename std::enable_
 public:
     /// Triangulates a simple polygon in 3D.
 
-    /// The function first projects the polygon onto a plane and then
+    /// The function first projects the polygon onto a coordinate plane and then
     /// triangulates the resulting 2D polygon.
     ///
     /// If vertices are not coplanar, the result is undefined.
@@ -1566,28 +1586,29 @@ public:
             this->m_Result = TRIANGULATE_POLYGON_RESULT_VERTS_COLLINEAR;
             return this->m_Triangles;
         }
-        const auto AbsNormal = abs(Normal);
+        const Vector3<ComponentType> AbsNormal = abs(Normal);
 
-        Vector3<ComponentType> Tangent;
-        if (AbsNormal.z > (std::max)(AbsNormal.x, AbsNormal.y))
-            Tangent = cross(Vector3<ComponentType>{ComponentType{0}, ComponentType{1}, ComponentType{0}}, Normal);
-        else if (AbsNormal.y > (std::max)(AbsNormal.x, AbsNormal.z))
-            Tangent = cross(Vector3<ComponentType>{ComponentType{1}, ComponentType{0}, ComponentType{0}}, Normal);
-        else
-            Tangent = cross(Vector3<ComponentType>{ComponentType{0}, ComponentType{0}, ComponentType{1}}, Normal);
-        VERIFY_EXPR(length(Tangent) > 0);
-        Tangent = normalize(Tangent);
+        // Drop the largest normal component to maximize the projected area.
+        // Keeping the original coordinates avoids normalization and dot-product
+        // rounding that can move collinear vertices off an ear's diagonal.
+        size_t Axis0 = 0;
+        size_t Axis1 = 1;
+        if (AbsNormal.x >= AbsNormal.y && AbsNormal.x >= AbsNormal.z)
+        {
+            Axis0 = 1;
+            Axis1 = 2;
+        }
+        else if (AbsNormal.y >= AbsNormal.z)
+        {
+            Axis1 = 2;
+        }
 
-        auto Bitangent = cross(Normal, Tangent);
-        VERIFY_EXPR(length(Bitangent) > 0);
-        Bitangent = normalize(Bitangent);
-
-        // Project the polygon
+        // Project the polygon onto the selected coordinate plane.
         m_PolygonProj.clear();
         m_PolygonProj.reserve(Polygon.size());
-        for (const auto& Vert : Polygon)
+        for (const Vector3<ComponentType>& Vert : Polygon)
         {
-            m_PolygonProj.emplace_back(dot(Tangent, Vert), dot(Bitangent, Vert));
+            m_PolygonProj.emplace_back(Vert[Axis0], Vert[Axis1]);
         }
 
         return Polygon2DTriangulator<IndexType>::Triangulate(m_PolygonProj);

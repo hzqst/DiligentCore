@@ -286,7 +286,9 @@ TEST(RayReconstructionTest, EvaluateAndReadback)
         }
 #if SUPER_RESOLUTION_SUPPORTED
         RefCntAutoPtr<ISuperResolutionFactory> SRFactory;
-        LoadAndCreateSuperResolutionFactory(Device, &SRFactory);
+        SuperResolutionFactoryCreateInfo       SRFactoryCI;
+        SRFactoryCI.pDevice = Device;
+        LoadAndCreateSuperResolutionFactory(SRFactoryCI, &SRFactory);
         ASSERT_NE(nullptr, SRFactory);
         Uint32 SRCount = 0;
         SRFactory->EnumerateVariants(SRCount, nullptr);

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2024 Diligent Graphics LLC
+ *  Copyright 2024-2026 Diligent Graphics LLC
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -42,7 +42,9 @@ struct ResourceBinding;
 namespace Diligent
 {
 
-std::string ConvertSPIRVtoWGSL(const std::vector<uint32_t>& SPIRV);
+// Preserve original resource names and optionally constant-buffer member descriptions
+// in the generated source, independently of Tint's type and identifier rewrites.
+std::string ConvertSPIRVtoWGSL(const std::vector<uint32_t>& SPIRV, bool LoadUniformBufferReflection = false);
 
 struct WGSLResourceBindingInfo
 {
@@ -52,9 +54,21 @@ struct WGSLResourceBindingInfo
 };
 using WGSLResourceMapping = std::unordered_map<std::string, WGSLResourceBindingInfo>;
 
+// Remap the selected entry point and discard declarations used only by other
+// entry points. A null EntryPoint remaps the whole module. The IR round trip
+// gives every retained override an explicit @id with its original Tint ID.
+// Metadata preserves original resource and specialization-constant names across
+// rewrites, including native WGSL shaders that initially have no metadata.
+// On success, pRemappedEntryPoint receives the generated entry-point name when
+// EntryPoint is selected, or an empty string for a whole-module rewrite. The
+// output is unchanged on failure and may also supply the input entry-point name.
+// Returns an empty string if an active resource cannot be mapped unambiguously,
+// including distinct resource names sharing a destination across entry points.
 std::string RemapWGSLResourceBindings(const std::string&         WGSL,
                                       const WGSLResourceMapping& ResMapping,
-                                      const char*                EmulatedArrayIndexSuffix);
+                                      const char*                EmulatedArrayIndexSuffix,
+                                      const char*                EntryPoint          = nullptr,
+                                      std::string*               pRemappedEntryPoint = nullptr);
 
 
 /// When WGSL is generated from SPIR-V, the names of resources may be mangled

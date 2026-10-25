@@ -1,5 +1,5 @@
 /*
- *  Copyright 2024-2025 Diligent Graphics LLC
+ *  Copyright 2024-2026 Diligent Graphics LLC
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@
 #include "Align.hpp"
 #include "StringPool.hpp"
 #include "WGSLUtils.hpp"
+#include "WGSLShaderReflection.hpp"
 #include "DataBlobImpl.hpp"
 #include "ShaderToolsCommon.hpp"
 
@@ -82,10 +83,10 @@ SHADER_TYPE TintPipelineStageToShaderType(tint::inspector::PipelineStage Stage)
     }
 }
 
-WGSLShaderResourceAttribs::ResourceType TintResourceTypeToWGSLShaderAttribsResourceType(tint::inspector::ResourceBinding::ResourceType TintResType)
+WGSLShaderResourceAttribs::ResourceType TintBindingToWGSLShaderAttribsResourceType(const tint::inspector::ResourceBinding& TintBinding)
 {
     using TintResourceType = tint::inspector::ResourceBinding::ResourceType;
-    switch (TintResType)
+    switch (TintBinding.resource_type)
     {
         case TintResourceType::kUniformBuffer:
             return WGSLShaderResourceAttribs::ResourceType::UniformBuffer;
@@ -97,10 +98,9 @@ WGSLShaderResourceAttribs::ResourceType TintResourceTypeToWGSLShaderAttribsResou
             return WGSLShaderResourceAttribs::ResourceType::ROStorageBuffer;
 
         case TintResourceType::kSampler:
-            return WGSLShaderResourceAttribs::ResourceType::Sampler;
-
-        case TintResourceType::kComparisonSampler:
-            return WGSLShaderResourceAttribs::ResourceType::ComparisonSampler;
+            return TintBinding.sampler_type == tint::inspector::ResourceBinding::SamplerType::kComparison ?
+                WGSLShaderResourceAttribs::ResourceType::ComparisonSampler :
+                WGSLShaderResourceAttribs::ResourceType::Sampler;
 
         case TintResourceType::kSampledTexture:
             return WGSLShaderResourceAttribs::ResourceType::Texture;
@@ -151,6 +151,10 @@ WGSLShaderResourceAttribs::TextureSampleType TintSampleKindToWGSLShaderAttribsSa
         switch (TintBinding.sampled_kind)
         {
             case TintSampledKind::kFloat:
+            case TintSampledKind::kFilterable:
+            case TintSampledKind::kUnfilterable:
+            case TintSampledKind::kUnknownFilterable:
+                // Filterability is configured through WebGPUResourceAttribs.
                 return WGSLShaderResourceAttribs::TextureSampleType::Float;
 
             case TintSampledKind::kSInt:
@@ -158,9 +162,6 @@ WGSLShaderResourceAttribs::TextureSampleType TintSampleKindToWGSLShaderAttribsSa
 
             case TintSampledKind::kUInt:
                 return WGSLShaderResourceAttribs::TextureSampleType::UInt;
-
-            case TintSampledKind::kUnknown:
-                return WGSLShaderResourceAttribs::TextureSampleType::Unknown;
 
             default:
                 UNEXPECTED("Unexpected sample kind");
@@ -221,7 +222,6 @@ RESOURCE_DIMENSION TintBindingToResourceDimension(const tint::inspector::Resourc
             return RESOURCE_DIM_BUFFER;
 
         case TintResourceType::kSampler:
-        case TintResourceType::kComparisonSampler:
             return RESOURCE_DIM_UNDEFINED;
 
         case TintResourceType::kSampledTexture:
@@ -347,7 +347,7 @@ WGSLShaderResourceAttribs::WGSLShaderResourceAttribs(const char*                
     // clang-format off
     Name             {_Name},
     ArraySize        {static_cast<Uint16>(_ArraySize)},
-    Type             {TintResourceTypeToWGSLShaderAttribsResourceType(TintBinding.resource_type)},
+    Type             {TintBindingToWGSLShaderAttribsResourceType(TintBinding)},
     ResourceDim      {TintBindingToResourceDimension(TintBinding)},
     Format			 {TintTexelFormatToTextureFormat(TintBinding)},
     BindGroup        {static_cast<Uint16>(TintBinding.bind_group)},
@@ -495,7 +495,7 @@ namespace
 bool ResourceBindingsCompatibile(const tint::inspector::ResourceBinding& Binding0,
                                  const tint::inspector::ResourceBinding& Binding1)
 {
-    if (Binding0.resource_type != Binding1.resource_type)
+    if (TintBindingToWGSLShaderAttribsResourceType(Binding0) != TintBindingToWGSLShaderAttribsResourceType(Binding1))
         return false;
 
     if (TintBindingToResourceDimension(Binding0) != TintBindingToResourceDimension(Binding1))
@@ -739,19 +739,31 @@ ShaderCodeBufferDescX LoadUBReflection(const tint::Program& Program, const tint:
     VERIFY(Variable, "Unexpected error");
 
 
-    const tint::core::type::Struct* WGSLType = Program.TypeOf(Variable->type)->As<tint::core::type::Struct>();
-    const uint32_t                  Size     = WGSLType->Size();
+    const tint::core::type::Type* WGSLType = Program.TypeOf(Variable->type);
 
     ShaderCodeBufferDescX UBDesc;
-    UBDesc.Size = Size;
-    for (const tint::core::type::StructMember* Member : WGSLType->Members())
+    UBDesc.Size = WGSLType->Size();
+    if (const auto* WGSLStruct = WGSLType->As<tint::core::type::Struct>())
     {
+        for (const tint::core::type::StructMember* Member : WGSLStruct->Members())
+        {
+            ShaderCodeVariableDesc VarDesc;
+            VarDesc.Name   = Member->Name().NameView().data();
+            VarDesc.Offset = Member->Offset();
+
+            size_t VariableIdx = UBDesc.AddVariable(VarDesc);
+            LoadShaderCodeVariableDesc(Program, Member->Type(), Language, UBDesc.GetVariable(VariableIdx));
+        }
+    }
+    else
+    {
+        // WGSL also permits non-struct uniforms. Expose the whole value as one
+        // variable at offset zero, retaining the resource name restored from metadata.
         ShaderCodeVariableDesc VarDesc;
-        VarDesc.Name   = Member->Name().NameView().data();
-        VarDesc.Offset = Member->Offset();
+        VarDesc.Name = UB.variable_name.c_str();
 
         size_t VariableIdx = UBDesc.AddVariable(VarDesc);
-        LoadShaderCodeVariableDesc(Program, Member->Type(), Language, UBDesc.GetVariable(VariableIdx));
+        LoadShaderCodeVariableDesc(Program, WGSLType, Language, UBDesc.GetVariable(VariableIdx));
     }
 
     return UBDesc;
@@ -820,33 +832,26 @@ WGSLShaderResources::WGSLShaderResources(IMemoryAllocator&      Allocator,
     }
     m_ShaderType = TintPipelineStageToShaderType(EntryPoints[EntryPointIdx].stage);
 
-    std::vector<tint::inspector::ResourceBinding> ResourceBindings = Inspector.GetResourceBindings(EntryPoint);
-    if (SourceLanguage != SHADER_SOURCE_LANGUAGE_WGSL)
+    WGSLShaderReflection SourceReflection;
+    if (!ParseWGSLShaderReflection(WGSL, SourceReflection))
     {
-        //   HLSL:
-        //      struct BufferData0
-        //      {
-        //          float4 data;
-        //      };
-        //      StructuredBuffer<BufferData0> g_Buff0;
-        //      StructuredBuffer<BufferData0> g_Buff1;
-        //      StructuredBuffer<int>         g_AtomicBuff0; // Used in atomic operations
-        //      StructuredBuffer<int>         g_AtomicBuff1; // Used in atomic operations
-        //   WGSL:
-        //      struct g_Buff0 {
-        //        x_data : RTArr,
-        //      }
-        //      @group(0) @binding(0) var<storage, read> g_Buff0_1       : g_Buff0;
-        //      @group(0) @binding(1) var<storage, read> g_Buff1         : g_Buff0;
-        //      @group(0) @binding(2) var<storage, read> g_AtomicBuff0_1 : g_AtomicBuff0_atomic;
-        //      @group(0) @binding(3) var<storage, read> g_AtomicBuff1   : g_AtomicBuff0_atomic;
-        for (tint::inspector::ResourceBinding& Binding : ResourceBindings)
+        LOG_ERROR_AND_THROW("Invalid WGSL reflection metadata for shader '", ShaderName, "'");
+    }
+
+    std::vector<tint::inspector::ResourceBinding> ResourceBindings = Inspector.GetResourceBindings(EntryPoint);
+    for (auto& Binding : ResourceBindings)
+    {
+        if (const auto* Resource = SourceReflection.Find(Binding.bind_group, Binding.binding))
         {
+            Binding.variable_name = Resource->Name;
+        }
+        else if (SourceLanguage != SHADER_SOURCE_LANGUAGE_WGSL)
+        {
+            // Older archives have no original names. Keep the legacy type-name
+            // fallback for them, but do not apply it to resources with metadata.
             std::string AltName = GetWGSLResourceAlternativeName(Program, Binding);
             if (!AltName.empty())
-            {
                 Binding.variable_name = std::move(AltName);
-            }
         }
     }
 
@@ -875,7 +880,6 @@ WGSLShaderResources::WGSLShaderResources(IMemoryAllocator&      Allocator,
                 break;
 
             case TintResourceType::kSampler:
-            case TintResourceType::kComparisonSampler:
                 ++ResCounters.NumSamplers;
                 break;
 
@@ -919,12 +923,19 @@ WGSLShaderResources::WGSLShaderResources(IMemoryAllocator&      Allocator,
     ResourceNamesPoolSize += strlen(ShaderName) + 1;
     ResourceNamesPoolSize += strlen(EntryPoint) + 1;
 
+    // Keep the source name for application lookup, but use Tint's current ID and
+    // is_id_specified flag when addressing the override in the generated WGSL.
+    const auto GetOverrideName = [&SourceReflection](const tint::inspector::Override& Override) -> const std::string& {
+        const auto It = SourceReflection.SpecializationConstants.find(Override.id.value);
+        return It != SourceReflection.SpecializationConstants.end() ? It->second : Override.name;
+    };
+
     // Count override constants (specialization constants)
     const auto& Overrides        = EntryPoints[EntryPointIdx].overrides;
     Uint32      NumSpecConstants = static_cast<Uint32>(Overrides.size());
     for (const tint::inspector::Override& Override : Overrides)
     {
-        ResourceNamesPoolSize += Override.name.length() + 1;
+        ResourceNamesPoolSize += GetOverrideName(Override).length() + 1;
     }
 
     // Resource names pool is only needed to facilitate string allocation.
@@ -948,7 +959,20 @@ WGSLShaderResources::WGSLShaderResources(IMemoryAllocator&      Allocator,
                 new (&GetUB(CurrRes.NumUBs++)) WGSLShaderResourceAttribs{Name, Binding, ArraySize};
 
                 if (LoadUniformBufferReflection)
-                    UBReflections.emplace_back(LoadUBReflection(Program, Binding, SourceLanguage));
+                {
+                    auto* SourceResource = SourceReflection.Find(Binding.bind_group, Binding.binding);
+                    if (SourceResource != nullptr && SourceResource->UniformBuffer)
+                    {
+                        // Report source names, matrix orientation, arrays, and member offsets,
+                        // not the padded structs and renamed members produced by Tint.
+                        UBReflections.emplace_back(std::move(*SourceResource->UniformBuffer));
+                    }
+                    else
+                    {
+                        // Native WGSL and older archives have no source buffer metadata.
+                        UBReflections.emplace_back(LoadUBReflection(Program, Binding, SourceLanguage));
+                    }
+                }
             }
             break;
 
@@ -960,7 +984,6 @@ WGSLShaderResources::WGSLShaderResources(IMemoryAllocator&      Allocator,
             break;
 
             case TintResourceType::kSampler:
-            case TintResourceType::kComparisonSampler:
             {
                 new (&GetSampler(CurrRes.NumSamplers++)) WGSLShaderResourceAttribs{Name, Binding, ArraySize};
             }
@@ -1010,9 +1033,9 @@ WGSLShaderResources::WGSLShaderResources(IMemoryAllocator&      Allocator,
         Uint32 SpecConstIdx = 0;
         for (const tint::inspector::Override& Override : Overrides)
         {
-            const char*            SCName = ResourceNamesPool.CopyString(Override.name);
+            const char*            SCName = ResourceNamesPool.CopyString(GetOverrideName(Override));
             SHADER_CODE_BASIC_TYPE SCType = TintOverrideTypeToShaderCodeBasicType(Override.type);
-            new (&GetSpecConstant(SpecConstIdx++)) WGSLSpecializationConstantAttribs{SCName, Override.id.value, SCType};
+            new (&GetSpecConstant(SpecConstIdx++)) WGSLSpecializationConstantAttribs{SCName, Override.id.value, SCType, Override.is_id_specified};
         }
         VERIFY_EXPR(SpecConstIdx == GetNumSpecConstants());
     }

@@ -49,8 +49,8 @@ if(ENABLE_HLSL)
 endif()
 
 if(ENABLE_WGSL)
-    list(APPEND SOURCE src/WGSLUtils.cpp src/WGSLShaderResources.cpp)
-    list(APPEND INCLUDE include/WGSLUtils.hpp include/WGSLShaderResources.hpp)
+    list(APPEND SOURCE src/WGSLUtils.cpp src/WGSLShaderResources.cpp src/WGSLShaderReflection.cpp)
+    list(APPEND INCLUDE include/WGSLUtils.hpp include/WGSLShaderResources.hpp include/WGSLShaderReflection.hpp)
 endif()
 
 if(D3D11_SUPPORTED OR D3D12_SUPPORTED)
@@ -218,6 +218,8 @@ if(ENABLE_WGSL)
     target_link_libraries(Diligent-ShaderTools
     PRIVATE
         libtint
+        # Tint's internal headers require Dawn's utility build configuration.
+        dawn_utils_config
         # We include this library because when building for Emscripten, libtint does not include this library in the dependency list
         tint_lang_wgsl_inspector 
     ) 
@@ -249,7 +251,11 @@ add_custom_command(OUTPUT ${HLSL_DEFINITIONS_INC} # We must use full path here!
                    VERBATIM
 )
 
-set_common_target_properties(Diligent-ShaderTools)
+if(ENABLE_WGSL)
+    set_common_target_properties(Diligent-ShaderTools 20)
+else()
+    set_common_target_properties(Diligent-ShaderTools)
+endif()
 
 source_group("src" FILES ${SOURCE})
 source_group("include" FILES ${INCLUDE})

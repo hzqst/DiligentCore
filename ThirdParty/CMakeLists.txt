@@ -65,6 +65,8 @@ if (VULKAN_SUPPORTED OR METAL_SUPPORTED OR WEBGPU_SUPPORTED OR (ARCHIVER_SUPPORT
         set_target_properties(${SPIRV_TOOLS_EXCLUDE_TARGETS} PROPERTIES EXCLUDE_FROM_ALL 1 EXCLUDE_FROM_DEFAULT_BUILD 1)
 
         set(THIRD_PARTY_LIBS SPIRV-Tools-static SPIRV-Tools-opt)
+        # Tint's SPIR-V reader links these libraries into threaded WebAssembly builds.
+        set_targets_emscripten_properties(SPIRV-Tools-static SPIRV-Tools-opt)
         install(FILES "${spirv-tools_SOURCE_DIR}/LICENSE" DESTINATION "Licenses/ThirdParty/${DILIGENT_CORE_DIR}" RENAME SPIRV-Tools-License.txt)
     endif()
 
@@ -115,8 +117,11 @@ if (VULKAN_SUPPORTED OR METAL_SUPPORTED OR WEBGPU_SUPPORTED OR (ARCHIVER_SUPPORT
         set_directory_root_folder("SPIRV-Cross" "DiligentCore/ThirdParty/SPIRV-Cross")
 
         list(APPEND THIRD_PARTY_LIBS spirv-cross-core)
+        # SPIRV-Cross libraries must support the shared memory used by threaded WebAssembly modules.
+        set_targets_emscripten_properties(spirv-cross-core)
         if(SPIRV_CROSS_ENABLE_GLSL)
             list(APPEND THIRD_PARTY_LIBS spirv-cross-glsl)
+            set_targets_emscripten_properties(spirv-cross-glsl)
         endif()
         if (SPIRV_CROSS_ENABLE_MSL)
             list(APPEND THIRD_PARTY_LIBS spirv-cross-msl)
