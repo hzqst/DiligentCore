@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -49,7 +49,7 @@ CommandQueueD3D12Impl::CommandQueueD3D12Impl(IReferenceCounters* pRefCounters,
     m_WaitForGPUEventHandle{CreateEvent(nullptr, false, false, nullptr)}
 // clang-format on
 {
-    VERIFY_EXPR(m_WaitForGPUEventHandle != INVALID_HANDLE_VALUE);
+    VERIFY_EXPR(m_WaitForGPUEventHandle != nullptr);
     m_d3d12Fence->Signal(0);
 }
 
