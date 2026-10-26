@@ -1797,6 +1797,19 @@ struct BuildTLASAttribs
     /// \note
     ///     An update will be faster than building an acceleration structure from scratch.
     Bool                            Update                        DEFAULT_INITIALIZER(False);
+    /// Consume native instance descriptors already stored in pInstanceBuffer (D3D12 and Vulkan).
+    ///
+    /// When true, BuildTLAS does not upload CPU descriptors. pInstances is still required
+    /// for BLAS lifetime/state tracking and SBT metadata. GPU descriptors must use the
+    /// same BLAS addresses, instance indices and hit-group contributions as this metadata.
+    /// On update, instance indices retain their original build order even if pInstances
+    /// is reordered. Transforms, custom IDs, masks and native flags come from the buffer.
+    /// The caller must synchronize GPU writes before AS reads; TRANSITION mode handles
+    /// the transition from UNORDERED_ACCESS to BUILD_AS_READ on the current context.
+    /// The buffer contains InstanceCount contiguous TLAS_INSTANCE_DATA_SIZE-byte native
+    /// descriptors at InstanceBufferOffset. GPU descriptor contents cannot be CPU-validated.
+    /// The default false preserves CPU descriptor generation.
+    Bool                            InstanceBufferIsPrebuilt       DEFAULT_INITIALIZER(False);
 };
 typedef struct BuildTLASAttribs BuildTLASAttribs;
 

@@ -2954,7 +2954,15 @@ void DeviceContextD3D12Impl::BuildTLAS(const BuildTLASAttribs& Attribs)
             return;
     }
 
-    // copy instance data into instance buffer
+    // BLAS state tracking is required for both CPU and GPU-generated descriptors.
+    for (Uint32 i = 0; i < Attribs.InstanceCount; ++i)
+    {
+        auto* pBLAS = ClassPtrCast<BottomLevelASD3D12Impl>(Attribs.pInstances[i].pBLAS);
+        TransitionOrVerifyBLASState(CmdCtx, *pBLAS, Attribs.BLASTransitionMode, RESOURCE_STATE_BUILD_AS_READ, OpName);
+    }
+
+    // Do not overwrite descriptors prepared by the GPU.
+    if (!Attribs.InstanceBufferIsPrebuilt && Attribs.InstanceCount != 0)
     {
         size_t                 Size     = Attribs.InstanceCount * sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
         D3D12DynamicAllocation TmpSpace = m_DynamicHeap.Allocate(Size, 16, m_FrameNumber);
@@ -2986,8 +2994,6 @@ void DeviceContextD3D12Impl::BuildTLAS(const BuildTLASAttribs& Attribs)
             d3d12Inst.InstanceMask                        = Inst.Mask;
             d3d12Inst.Flags                               = InstanceFlagsToD3D12RTInstanceFlags(Inst.Flags);
             d3d12Inst.AccelerationStructure               = pBLASD3D12->GetGPUAddress();
-
-            TransitionOrVerifyBLASState(CmdCtx, *pBLASD3D12, Attribs.BLASTransitionMode, RESOURCE_STATE_BUILD_AS_READ, OpName);
         }
         UpdateBufferRegion(pInstancesD3D12, TmpSpace, Attribs.InstanceBufferOffset, Size, Attribs.InstanceBufferTransitionMode);
     }

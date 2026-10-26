@@ -147,6 +147,7 @@ public:
             this->m_BuildInfo.LastContributionToHitGroupIndex  = InstanceOffset;
             this->m_BuildInfo.BindingMode                      = BindingMode;
             this->m_BuildInfo.InstanceCount                    = InstanceCount;
+            m_IsInitialized                                    = true;
 
 #ifdef DILIGENT_DEVELOPMENT
             this->m_DvpVersion.fetch_add(1);
@@ -226,6 +227,7 @@ public:
 
         this->m_StringPool.Reserve(Src.m_StringPool.GetReservedSize(), GetRawAllocator());
         this->m_BuildInfo = Src.m_BuildInfo;
+        m_IsInitialized   = Src.m_IsInitialized;
 
         for (auto& SrcInst : Src.m_Instances)
         {
@@ -312,9 +314,9 @@ public:
     {
         bool result = true;
 
-        if (this->m_Instances.empty())
+        if (!m_IsInitialized)
         {
-            LOG_ERROR_MESSAGE("TLAS with name ('", this->m_Desc.Name, "') doesn't have instances, use IDeviceContext::BuildTLAS() or IDeviceContext::CopyTLAS() to initialize TLAS content");
+            LOG_ERROR_MESSAGE("TLAS with name ('", this->m_Desc.Name, "') is uninitialized, use IDeviceContext::BuildTLAS() or IDeviceContext::CopyTLAS() to initialize TLAS content");
             result = false;
         }
 
@@ -350,6 +352,7 @@ public:
 private:
     void ClearInstanceData()
     {
+        m_IsInitialized = false;
         this->m_Instances.clear();
         this->m_StringPool.Clear();
 
@@ -387,7 +390,8 @@ private:
     }
 
 protected:
-    RESOURCE_STATE     m_State = RESOURCE_STATE_UNKNOWN;
+    bool               m_IsInitialized = false;
+    RESOURCE_STATE     m_State         = RESOURCE_STATE_UNKNOWN;
     TLASBuildInfo      m_BuildInfo;
     ScratchBufferSizes m_ScratchSize;
 

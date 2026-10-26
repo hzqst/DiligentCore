@@ -3860,7 +3860,15 @@ void DeviceContextVkImpl::BuildTLAS(const BuildTLASAttribs& Attribs)
             return;
     }
 
-    // copy instance data into instance buffer
+    // BLAS state tracking is required for both CPU and GPU-generated descriptors.
+    for (Uint32 i = 0; i < Attribs.InstanceCount; ++i)
+    {
+        auto* pBLAS = ClassPtrCast<BottomLevelASVkImpl>(Attribs.pInstances[i].pBLAS);
+        TransitionOrVerifyBLASState(*pBLAS, Attribs.BLASTransitionMode, RESOURCE_STATE_BUILD_AS_READ, OpName);
+    }
+
+    // Do not overwrite descriptors prepared by the GPU.
+    if (!Attribs.InstanceBufferIsPrebuilt && Attribs.InstanceCount != 0)
     {
         size_t                 Size     = Attribs.InstanceCount * sizeof(VkAccelerationStructureInstanceKHR);
         VulkanUploadAllocation TmpSpace = m_UploadHeap.Allocate(Size, 16);
@@ -3892,8 +3900,6 @@ void DeviceContextVkImpl::BuildTLAS(const BuildTLASAttribs& Attribs)
             vkASInst.mask                                   = Inst.Mask;
             vkASInst.flags                                  = InstanceFlagsToVkGeometryInstanceFlags(Inst.Flags);
             vkASInst.accelerationStructureReference         = pBLASVk->GetVkDeviceAddress();
-
-            TransitionOrVerifyBLASState(*pBLASVk, Attribs.BLASTransitionMode, RESOURCE_STATE_BUILD_AS_READ, OpName);
         }
 
         UpdateBufferRegion(pInstancesVk, Attribs.InstanceBufferOffset, Size, TmpSpace.vkBuffer, TmpSpace.AlignedOffset, Attribs.InstanceBufferTransitionMode);

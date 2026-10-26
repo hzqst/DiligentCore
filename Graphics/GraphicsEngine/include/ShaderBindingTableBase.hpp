@@ -314,6 +314,9 @@ public:
                     Info.BindingMode == HIT_GROUP_BINDING_MODE_PER_TLAS);
         VERIFY_EXPR(RayOffsetInHitGroupIndex < Info.HitGroupStride);
 
+        if (Info.InstanceCount == 0)
+            return;
+
         const Uint32 GroupSize = this->GetDevice()->GetAdapterInfo().RayTracing.ShaderGroupHandleSize;
         const size_t Stride    = this->m_ShaderRecordStride;
         this->m_HitGroupsRecord.resize(std::max(this->m_HitGroupsRecord.size(), (size_t{Info.LastContributionToHitGroupIndex} + 1) * Stride), Uint8{EmptyElem});
