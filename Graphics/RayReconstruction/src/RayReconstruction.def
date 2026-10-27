@@ -1,0 +1,2 @@
+EXPORTS
+    CreateRayReconstructionFactory=Diligent_CreateRayReconstructionFactory

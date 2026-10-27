@@ -14,6 +14,20 @@ INTERFACE
     Diligent-PublicBuildSettings
 )
 
+set(DILIGENT_DLSS_SUPPORTED FALSE CACHE INTERNAL "NGX DLSS support")
+set(RAY_RECONSTRUCTION_SUPPORTED FALSE CACHE INTERNAL "Ray reconstruction support")
+if(PLATFORM_WIN32 AND NOT MINGW_BUILD AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT DILIGENT_NO_DLSS)
+    if(D3D11_SUPPORTED OR D3D12_SUPPORTED OR VULKAN_SUPPORTED)
+        set(DILIGENT_DLSS_SUPPORTED TRUE CACHE INTERNAL "NGX DLSS support")
+    endif()
+    if(NOT DILIGENT_NO_RAY_RECONSTRUCTION AND (D3D12_SUPPORTED OR VULKAN_SUPPORTED))
+        set(RAY_RECONSTRUCTION_SUPPORTED TRUE CACHE INTERNAL "Ray reconstruction support")
+    endif()
+endif()
+if(DILIGENT_DLSS_SUPPORTED AND (SUPER_RESOLUTION_SUPPORTED OR RAY_RECONSTRUCTION_SUPPORTED))
+    add_subdirectory(NGX)
+endif()
+
 add_subdirectory(GraphicsAccessories)
 add_subdirectory(GraphicsEngine)
 
@@ -59,4 +73,7 @@ add_subdirectory(GraphicsTools)
 
 if(SUPER_RESOLUTION_SUPPORTED)
     add_subdirectory(SuperResolution)
+endif()
+if(RAY_RECONSTRUCTION_SUPPORTED)
+    add_subdirectory(RayReconstruction)
 endif()

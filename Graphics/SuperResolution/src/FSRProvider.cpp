@@ -35,6 +35,7 @@
 #include "CommonlyUsedStates.h"
 #include "ShaderMacroHelper.hpp"
 #include "BasicMath.hpp"
+#include "Dearchiver.h"
 #include "EngineMemory.h"
 
 namespace Diligent
@@ -110,6 +111,10 @@ SuperResolutionFSR::SuperResolutionFSR(IReferenceCounters*        pRefCounters,
     m_pEASU_PSO{pEASU_PSO},
     m_pRCAS_PSO{pRCAS_PSO}
 {
+    VERIFY_SUPER_RESOLUTION(m_Desc.Name, pDevice != nullptr, "Render device must not be null");
+    VERIFY_SUPER_RESOLUTION(m_Desc.Name, m_pEASU_PSO != nullptr, "FSR EASU pipeline state must not be null");
+    VERIFY_SUPER_RESOLUTION(m_Desc.Name, m_pRCAS_PSO != nullptr, "FSR RCAS pipeline state must not be null");
+
     {
         const float InputWidth   = static_cast<float>(Desc.InputWidth);
         const float InputHeight  = static_cast<float>(Desc.InputHeight);
@@ -199,7 +204,7 @@ void SuperResolutionFSR::Execute(const ExecuteSuperResolutionAttribs& Attribs)
 class FSRProvider final : public SuperResolutionProvider
 {
 public:
-    FSRProvider(IRenderDevice* pDevice);
+    FSRProvider(IRenderDevice* pDevice, const SuperResolutionFSRCreateInfo* pCreateInfo);
 
     virtual void EnumerateVariants(std::vector<SuperResolutionInfo>& Variants) override final
     {
@@ -213,8 +218,13 @@ public:
 
     virtual void CreateSuperResolution(const SuperResolutionDesc& Desc, const SuperResolutionInfo& Info, ISuperResolution** ppUpscaler) override final
     {
-        auto& Pipelines = GetOrCreatePipelines(Desc.OutputFormat);
-        auto* pUpscaler = NEW_RC_OBJ(GetRawAllocator(), "SuperResolutionFSR instance", SuperResolutionFSR)(m_pDevice, Desc, Info, Pipelines.pEASU_PSO, Pipelines.pRCAS_PSO);
+        DEV_CHECK_ERR(ppUpscaler != nullptr, "ppUpscaler must not be null");
+
+        const auto* pPipelines = GetOrCreatePipelines(Desc.OutputFormat);
+        if (pPipelines == nullptr)
+            return;
+
+        auto* pUpscaler = NEW_RC_OBJ(GetRawAllocator(), "SuperResolutionFSR instance", SuperResolutionFSR)(m_pDevice, Desc, Info, pPipelines->pEASU_PSO, pPipelines->pRCAS_PSO);
         pUpscaler->QueryInterface(IID_SuperResolution, reinterpret_cast<IObject**>(ppUpscaler));
     }
 
@@ -225,25 +235,55 @@ private:
         RefCntAutoPtr<IPipelineState> pRCAS_PSO;
     };
 
-    PipelineData& GetOrCreatePipelines(TEXTURE_FORMAT OutputFormat);
+    struct ArchivedPipelineInfo
+    {
+        explicit ArchivedPipelineInfo(const SuperResolutionFSRCreateInfo& CI) :
+            pDearchiver{CI.pDearchiver},
+            EASUPSOName{CI.EASUPSOName},
+            RCASPSOName{CI.RCASPSOName}
+        {}
+
+        RefCntAutoPtr<IDearchiver> pDearchiver;
+        std::string                EASUPSOName;
+        std::string                RCASPSOName;
+    };
+
+    PipelineData* GetOrCreatePipelines(TEXTURE_FORMAT OutputFormat);
 
     RefCntAutoPtr<IRenderDevice>                                        m_pDevice;
     RefCntAutoPtr<IShaderSourceInputStreamFactory>                      m_pShaderSourceFactory;
     RefCntAutoPtr<IShader>                                              m_pVS;
     RefCntAutoPtr<IShader>                                              m_pEASU_PS;
     RefCntAutoPtr<IShader>                                              m_pRCAS_PS;
+    std::unique_ptr<ArchivedPipelineInfo>                               m_pArchivedPipelineInfo;
     std::unordered_map<TEXTURE_FORMAT, PipelineData, std::hash<Uint32>> m_PipelineCache;
 };
 
 
-FSRProvider::FSRProvider(IRenderDevice* pDevice) :
+FSRProvider::FSRProvider(IRenderDevice* pDevice, const SuperResolutionFSRCreateInfo* pCreateInfo) :
     m_pDevice{pDevice}
 {
+    if (pDevice == nullptr)
+        LOG_ERROR_AND_THROW("Device must not be null");
+
+    if (pCreateInfo != nullptr)
+    {
+        if (pCreateInfo->pDearchiver == nullptr)
+            LOG_ERROR_AND_THROW("FSR dearchiver must not be null");
+        if (pCreateInfo->EASUPSOName == nullptr || pCreateInfo->EASUPSOName[0] == '\0')
+            LOG_ERROR_AND_THROW("FSR EASU pipeline state name must not be null or empty");
+        if (pCreateInfo->RCASPSOName == nullptr || pCreateInfo->RCASPSOName[0] == '\0')
+            LOG_ERROR_AND_THROW("FSR RCAS pipeline state name must not be null or empty");
+
+        m_pArchivedPipelineInfo = std::make_unique<ArchivedPipelineInfo>(*pCreateInfo);
+        return;
+    }
+
     MemoryShaderSourceFactoryCreateInfo CI{HLSL::g_Shaders, _countof(HLSL::g_Shaders)};
     CreateMemoryShaderSourceFactory(CI, &m_pShaderSourceFactory);
 
     ShaderMacroHelper Macros;
-    if (pDevice->GetDeviceInfo().Type != RENDER_DEVICE_TYPE_GLES)
+    if (m_pDevice->GetDeviceInfo().Type != RENDER_DEVICE_TYPE_GLES)
         Macros.AddShaderMacro("FSR_FEATURE_TEXTURE_GATHER", 1);
 
     auto CreateShader = [&](SHADER_TYPE Type, const char* Name, const char* EntryPoint, const char* FilePath, const ShaderMacroArray& ShaderMacros = {}) {
@@ -257,70 +297,101 @@ FSRProvider::FSRProvider(IRenderDevice* pDevice) :
         ShaderCI.Macros                          = ShaderMacros;
         ShaderCI.pShaderSourceStreamFactory      = m_pShaderSourceFactory;
         RefCntAutoPtr<IShader> pShader;
-        pDevice->CreateShader(ShaderCI, &pShader);
+        m_pDevice->CreateShader(ShaderCI, &pShader);
         return pShader;
     };
 
     m_pVS      = CreateShader(SHADER_TYPE_VERTEX, "FSR FullQuad VS", "FSR_FullQuadVS", "FSR_FullQuad.fx");
     m_pEASU_PS = CreateShader(SHADER_TYPE_PIXEL, "FSR EASU PS", "ComputeEdgeAdaptiveUpsamplingPS", "FSR_EdgeAdaptiveUpsampling.fx", Macros);
     m_pRCAS_PS = CreateShader(SHADER_TYPE_PIXEL, "FSR RCAS PS", "ComputeContrastAdaptiveSharpeningPS", "FSR_ContrastAdaptiveSharpening.fx");
+
+    if (!m_pVS || !m_pEASU_PS || !m_pRCAS_PS)
+        LOG_ERROR_AND_THROW("Failed to create FSR shaders");
 }
 
-FSRProvider::PipelineData& FSRProvider::GetOrCreatePipelines(TEXTURE_FORMAT OutputFormat)
+FSRProvider::PipelineData* FSRProvider::GetOrCreatePipelines(TEXTURE_FORMAT OutputFormat)
 {
     auto It = m_PipelineCache.find(OutputFormat);
     if (It != m_PipelineCache.end())
-        return It->second;
+        return &It->second;
 
-    PipelineData& Data = m_PipelineCache[OutputFormat];
+    PipelineData Data;
 
+    if (m_pArchivedPipelineInfo)
     {
-        PipelineResourceLayoutDescX ResourceLayout;
-        ResourceLayout
-            .SetDefaultVariableType(SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC)
-            .AddVariable(SHADER_TYPE_PIXEL, "cbFSRAttribs", SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE)
-            .AddImmutableSampler(SHADER_TYPE_PIXEL, "g_TextureSource", Sam_PointClamp);
+        auto ModifyPipelineStateCreateInfo = [](PipelineStateCreateInfo& PipelineCI, void* pUserData) {
+            auto& GraphicsPipelineCI                          = static_cast<GraphicsPipelineStateCreateInfo&>(PipelineCI);
+            GraphicsPipelineCI.GraphicsPipeline.RTVFormats[0] = *static_cast<const TEXTURE_FORMAT*>(pUserData);
+        };
 
-        GraphicsPipelineStateCreateInfoX PSOCreateInfo{"FSR::EASU PSO"};
-        PSOCreateInfo
-            .AddShader(m_pVS)
-            .AddShader(m_pEASU_PS)
-            .AddRenderTarget(OutputFormat)
-            .SetRasterizerDesc(RasterizerStateDesc{FILL_MODE_SOLID, CULL_MODE_NONE})
-            .SetDepthStencilDesc(DepthStencilStateDesc{False, False})
-            .SetResourceLayout(ResourceLayout);
+        PipelineStateUnpackInfo UnpackInfo;
+        UnpackInfo.pDevice                       = m_pDevice;
+        UnpackInfo.PipelineType                  = PIPELINE_TYPE_GRAPHICS;
+        UnpackInfo.ModifyPipelineStateCreateInfo = ModifyPipelineStateCreateInfo;
+        UnpackInfo.pUserData                     = &OutputFormat;
 
-        m_pDevice->CreateGraphicsPipelineState(PSOCreateInfo, &Data.pEASU_PSO);
+        UnpackInfo.Name = m_pArchivedPipelineInfo->EASUPSOName.c_str();
+        m_pArchivedPipelineInfo->pDearchiver->UnpackPipelineState(UnpackInfo, &Data.pEASU_PSO);
+
+        UnpackInfo.Name = m_pArchivedPipelineInfo->RCASPSOName.c_str();
+        m_pArchivedPipelineInfo->pDearchiver->UnpackPipelineState(UnpackInfo, &Data.pRCAS_PSO);
+    }
+    else
+    {
+        {
+            PipelineResourceLayoutDescX ResourceLayout;
+            ResourceLayout
+                .SetDefaultVariableType(SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC)
+                .AddVariable(SHADER_TYPE_PIXEL, "cbFSRAttribs", SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE)
+                .AddImmutableSampler(SHADER_TYPE_PIXEL, "g_TextureSource", Sam_PointClamp);
+
+            GraphicsPipelineStateCreateInfoX PSOCreateInfo{"FSR::EASU PSO"};
+            PSOCreateInfo
+                .AddShader(m_pVS)
+                .AddShader(m_pEASU_PS)
+                .AddRenderTarget(OutputFormat)
+                .SetRasterizerDesc(RasterizerStateDesc{FILL_MODE_SOLID, CULL_MODE_NONE})
+                .SetDepthStencilDesc(DepthStencilStateDesc{False, False})
+                .SetResourceLayout(ResourceLayout);
+
+            m_pDevice->CreateGraphicsPipelineState(PSOCreateInfo, &Data.pEASU_PSO);
+        }
+
+        {
+            PipelineResourceLayoutDescX ResourceLayout;
+            ResourceLayout
+                .SetDefaultVariableType(SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC)
+                .AddVariable(SHADER_TYPE_PIXEL, "cbFSRAttribs", SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE)
+                .AddVariable(SHADER_TYPE_PIXEL, "g_TextureSource", SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE);
+
+            GraphicsPipelineStateCreateInfoX PSOCreateInfo{"FSR::RCAS PSO"};
+            PSOCreateInfo
+                .AddShader(m_pVS)
+                .AddShader(m_pRCAS_PS)
+                .AddRenderTarget(OutputFormat)
+                .SetRasterizerDesc(RasterizerStateDesc{FILL_MODE_SOLID, CULL_MODE_NONE})
+                .SetDepthStencilDesc(DepthStencilStateDesc{False, False})
+                .SetResourceLayout(ResourceLayout);
+
+            m_pDevice->CreateGraphicsPipelineState(PSOCreateInfo, &Data.pRCAS_PSO);
+        }
     }
 
+    if (!Data.pEASU_PSO || !Data.pRCAS_PSO)
     {
-        PipelineResourceLayoutDescX ResourceLayout;
-        ResourceLayout
-            .SetDefaultVariableType(SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC)
-            .AddVariable(SHADER_TYPE_PIXEL, "cbFSRAttribs", SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE)
-            .AddVariable(SHADER_TYPE_PIXEL, "g_TextureSource", SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE);
-
-        GraphicsPipelineStateCreateInfoX PSOCreateInfo{"FSR::RCAS PSO"};
-        PSOCreateInfo
-            .AddShader(m_pVS)
-            .AddShader(m_pRCAS_PS)
-            .AddRenderTarget(OutputFormat)
-            .SetRasterizerDesc(RasterizerStateDesc{FILL_MODE_SOLID, CULL_MODE_NONE})
-            .SetDepthStencilDesc(DepthStencilStateDesc{False, False})
-            .SetResourceLayout(ResourceLayout);
-
-        m_pDevice->CreateGraphicsPipelineState(PSOCreateInfo, &Data.pRCAS_PSO);
+        LOG_ERROR_MESSAGE("Failed to create FSR pipeline states");
+        return nullptr;
     }
 
-    return Data;
+    return &m_PipelineCache.emplace(OutputFormat, std::move(Data)).first->second;
 }
 
 } // anonymous namespace
 
 
-std::unique_ptr<SuperResolutionProvider> CreateFSRProvider(IRenderDevice* pDevice)
+std::unique_ptr<SuperResolutionProvider> CreateFSRProvider(IRenderDevice* pDevice, const SuperResolutionFSRCreateInfo* pCreateInfo)
 {
-    return std::make_unique<FSRProvider>(pDevice);
+    return std::make_unique<FSRProvider>(pDevice, pCreateInfo);
 }
 
 } // namespace Diligent

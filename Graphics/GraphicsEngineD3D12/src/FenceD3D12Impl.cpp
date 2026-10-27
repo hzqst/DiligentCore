@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -84,7 +84,13 @@ void FenceD3D12Impl::Wait(Uint64 Value)
     // A null event blocks this caller until Value completes and supports concurrent waits.
     // Reusing a manual-reset event would allow later waits to return prematurely.
     const HRESULT hr = m_pd3d12Fence->SetEventOnCompletion(Value, nullptr);
-    CHECK_D3D_RESULT_THROW(hr, "Failed to wait for D3D12 fence");
+    if (FAILED(hr))
+    {
+        // Wait() must not return before the fence reaches the value, so fall back to polling.
+        LOG_D3D_ERROR(hr, FormatString("Failed to wait for fence '", m_Desc.Name, "' to reach value ", Value, ". Falling back to polling."));
+        while (GetCompletedValue() < Value)
+            std::this_thread::sleep_for(std::chrono::microseconds{1});
+    }
 }
 
 } // namespace Diligent

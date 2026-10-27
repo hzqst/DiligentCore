@@ -3,6 +3,9 @@ if(PLATFORM_WIN32)
     # Copies engine dlls to the target's output directory
     function(copy_engine_dlls TARGET_NAME)
         set(ENGINE_DLLS)
+        if(TARGET Diligent-NGX-shared)
+            list(APPEND ENGINE_DLLS Diligent-NGX-shared)
+        endif()
         if(D3D11_SUPPORTED)
             list(APPEND ENGINE_DLLS Diligent-GraphicsEngineD3D11-shared)
         endif()
@@ -110,11 +113,12 @@ if(PLATFORM_WIN32)
         set(DXCOMPILER_REQUIRED NO)
         set(DXCOMPILER_FOR_SPIRV_REQUIRED NO)
         
-        if (D3D11_SUPPORTED OR D3D12_SUPPORTED)
+        # Dawn falls back to FXC on adapters that do not support shader model 6.0.
+        if (D3D11_SUPPORTED OR D3D12_SUPPORTED OR WEBGPU_SUPPORTED)
             set(D3D_COMPILER_REQUIRED YES)
         endif()
 
-        # Dawn uses DXC, so we need to copy the DXC dlls even if DXC_REQUIRED is not set
+        # Dawn uses DXC, so copy the DXC dlls even if DXC_REQUIRED is not set
         # to get consistent shader compilation results
         if((arg_DXC_REQUIRED AND D3D12_SUPPORTED) OR WEBGPU_SUPPORTED)
             set(DXCOMPILER_REQUIRED YES)
@@ -522,6 +526,12 @@ endfunction()
 # clone. This macro takes care of it.
 macro(FetchContent_DeclareShallowGit Name GIT_REPOSITORY GitRepository GIT_TAG GitTag)
     include(FetchContent)
+    cmake_parse_arguments(_fetch_args "" "" "GIT_SUBMODULES" ${ARGN})
+    set(_fetch_submodules_command)
+    if(_fetch_args_GIT_SUBMODULES)
+        set(_fetch_submodules_command
+            && git submodule update --init --depth=1 -- ${_fetch_args_GIT_SUBMODULES})
+    endif()
     FetchContent_Declare(
         "${Name}"
 
@@ -536,6 +546,7 @@ macro(FetchContent_DeclareShallowGit Name GIT_REPOSITORY GitRepository GIT_TAG G
             git init &&
             git fetch --depth=1 "${GitRepository}" "${GitTag}" &&
             git reset --hard FETCH_HEAD
+            ${_fetch_submodules_command}
     )
 endmacro()
 

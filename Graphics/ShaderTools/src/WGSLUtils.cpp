@@ -1,5 +1,5 @@
 /*
- *  Copyright 2024-2025 Diligent Graphics LLC
+ *  Copyright 2024-2026 Diligent Graphics LLC
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,20 +24,44 @@
  *  of the possibility of such damages.
  */
 
+#include <algorithm>
+#include <limits>
+#include <unordered_set>
+
 #include "WGSLUtils.hpp"
+#include "WGSLShaderReflection.hpp"
 #include "DebugUtilities.hpp"
 #include "ParsingTools.hpp"
 #include "ShaderToolsCommon.hpp"
+#if defined(USE_SPIRV_TOOLS) && TINT_BUILD_SPV_READER
+#    define SPIRV_TO_WGSL_SUPPORTED 1
+#    include "SPIRVTools.hpp"
+#    include "SPIRVShaderResources.hpp"
+#    include "EngineMemory.h"
+#    include "spirv/unified1/spirv.hpp"
+#    include "spirv-tools/libspirv.h"
+#else
+#    define SPIRV_TO_WGSL_SUPPORTED 0
+#endif
 
 #ifdef _MSC_VER
 #    pragma warning(push)
 #    pragma warning(disable : 4324) //  warning C4324: structure was padded due to alignment specifier
 #endif
 
-#define TINT_BUILD_SPV_READER  1
-#define TINT_BUILD_WGSL_WRITER 1
 #include <tint/tint.h>
+#include "src/tint/lang/core/ir/module.h"
+#include "src/tint/lang/core/ir/builder.h"
+#include "src/tint/lang/core/ir/core_builtin_call.h"
+#include "src/tint/lang/core/ir/let.h"
+#include "src/tint/lang/core/ir/load.h"
+#include "src/tint/lang/core/ir/var.h"
+#include "src/tint/lang/core/ir/transform/direct_variable_access.h"
+#include "src/tint/lang/core/type/storage_texture.h"
+#include "src/tint/lang/core/ir/transform/binding_remapper.h"
+#include "src/tint/lang/core/ir/transform/single_entry_point.h"
 #include "src/tint/lang/wgsl/ast/module.h"
+#include "src/tint/lang/wgsl/ast/function.h"
 #include "src/tint/lang/wgsl/ast/identifier_expression.h"
 #include "src/tint/lang/wgsl/ast/identifier.h"
 #include "src/tint/lang/wgsl/sem/variable.h"
@@ -77,7 +101,8 @@ WGSLEmulatedResourceArrayElement GetWGSLEmulatedArrayElement(const std::string& 
     if (SuffixPos != std::string::npos && SuffixPos + Suffix.length() < Name.length())
     {
         int Index = 0;
-        if (Parsing::ParseInteger(Name.begin() + SuffixPos + Suffix.length(), Name.end(), Index) == Name.end())
+        if (Parsing::IsDigit(Name[SuffixPos + Suffix.length()]) &&
+            Parsing::ParseInteger(Name.begin() + SuffixPos + Suffix.length(), Name.end(), Index) == Name.end())
         {
             // g_Tex2DArr_15
             //            ^
@@ -89,25 +114,252 @@ WGSLEmulatedResourceArrayElement GetWGSLEmulatedArrayElement(const std::string& 
     return {Name, -1};
 }
 
-std::string ConvertSPIRVtoWGSL(const std::vector<uint32_t>& SPIRV)
+#if SPIRV_TO_WGSL_SUPPORTED
+// The legacy Tint SPIR-V reader inferred image access from shader operations.
+// The IR reader defaults storage images without access decorations to read_write,
+// even when they are only loaded or stored. Using these types directly changes
+// WGSL resource reflection and the bind-group layouts expected by Diligent.
+//
+// Restore the legacy mapping per resource: load-only images become sampled textures,
+// store-only images become write-only storage textures, and images used both ways
+// remain read_write. Queries alone do not infer access: keep the declared access,
+// mapping explicitly read-only images to sampled textures. Unknown uses retain
+// their original types. Only the temporary Tint IR is changed, not the source SPIR-V.
+static bool RestoreTextureAccess(tint::core::ir::Module& IR)
 {
-    tint::spirv::reader::Options SPIRVReaderOptions{true, {tint::wgsl::AllowedFeatures::Everything()}};
-    tint::Program                Program = Read(SPIRV, SPIRVReaderOptions);
+    namespace ir    = tint::core::ir;
+    namespace type  = tint::core::type;
+    using BuiltinFn = tint::core::BuiltinFn;
 
-    if (!Program.IsValid())
+    // Resolve texture parameters to global resources, including through nested calls.
+    // Helpers called with different resources need separate versions so a shared
+    // parameter does not force all arguments to have the same texture access mode.
+    // Run this only when needed: full handle specialization can duplicate helpers
+    // for distinct resources and also specializes other texture/sampler parameters.
+    bool HasTextureParameters = false;
+    for (const auto* Function : IR.functions)
     {
-        LOG_ERROR_MESSAGE("Tint SPIR-V reader failure:\nParser: " + Program.Diagnostics().Str() + "\n");
+        for (const auto* Param : Function->Params())
+            HasTextureParameters |= Param->Type()->UnwrapPtr()->Is<type::StorageTexture>();
+    }
+    if (HasTextureParameters)
+    {
+        ir::transform::DirectVariableAccessConfig Config;
+        Config.transform_handle = ir::transform::HandleTransformLevel::kFull;
+        auto Result             = ir::transform::DirectVariableAccess(IR, Config);
+        if (Result != tint::Success)
+        {
+            LOG_ERROR_MESSAGE("Failed to specialize texture parameters:\n", Result.Failure().reason);
+            return false;
+        }
+    }
+
+    ir::Builder Builder{IR};
+    auto&       Types = IR.Types();
+    for (auto* Inst : *IR.root_block)
+    {
+        auto* Var = Inst->As<ir::Var>();
+        if (Var == nullptr)
+            continue;
+        const auto* Texture = Var->Result()->Type()->UnwrapPtr()->As<type::StorageTexture>();
+        if (Texture == nullptr)
+            continue;
+
+        // Follow loads and aliases to find this resource's texture operations.
+        // Keep the alias values so their types can be updated together with the variable.
+        std::vector<ir::Value*>           Values{Var->Result()};
+        std::unordered_set<ir::Value*>    Visited{Var->Result()};
+        std::vector<ir::CoreBuiltinCall*> Loads;
+
+        bool HasReads       = false;
+        bool HasWrites      = false;
+        bool HasUnknownUses = false;
+        for (size_t i = 0; i < Values.size(); ++i)
+        {
+            for (const auto& Use : Values[i]->UsagesUnsorted())
+            {
+                if (Use->instruction->Is<ir::Load>() || Use->instruction->Is<ir::Let>())
+                {
+                    auto* Result = Use->instruction->Result();
+                    if (Visited.insert(Result).second)
+                        Values.push_back(Result);
+                }
+                else if (auto* Call = Use->instruction->As<ir::CoreBuiltinCall>())
+                {
+                    switch (Call->Func())
+                    {
+                        case BuiltinFn::kTextureLoad:
+                            HasReads = true;
+                            Loads.push_back(Call);
+                            break;
+                        case BuiltinFn::kTextureStore:
+                            HasWrites = true;
+                            break;
+                        case BuiltinFn::kTextureDimensions:
+                        case BuiltinFn::kTextureNumLayers:
+                            // Metadata queries do not read or write texels.
+                            break;
+                        default:
+                            HasUnknownUses = true;
+                            break;
+                    }
+                }
+                else
+                {
+                    // Retain the declared access for operations we cannot safely narrow.
+                    HasUnknownUses = true;
+                }
+            }
+        }
+        // Preserve the declared type when narrowing is unsafe or both access modes are needed.
+        if (HasUnknownUses || (HasReads && HasWrites))
+            continue;
+
+        const type::Type* NewTextureType = nullptr;
+        if (HasWrites)
+        {
+            NewTextureType = Types.storage_texture(Texture->Dim(), Texture->TexelFormat(), tint::core::Access::kWrite);
+        }
+        else if (HasReads || Texture->Access() == tint::core::Access::kRead)
+        {
+            // The legacy reader used sampled bindings for load-only images and for
+            // query-only images explicitly declared read-only (SPIR-V NonWritable).
+            NewTextureType = Types.sampled_texture(Texture->Dim(), Texture->Type());
+            for (auto* Load : Loads)
+                Load->AppendArg(Builder.Constant(tint::core::i32{0})); // Sampled texture loads require a mip level.
+        }
+        if (NewTextureType == nullptr)
+            continue;
+
+        // Tint types are shared. Assign replacement types to this resource and its
+        // aliases instead of mutating a type that may also describe another resource.
+        for (auto* Value : Values)
+        {
+            if (const auto* Ptr = Value->Type()->As<type::Pointer>())
+                Value->SetType(Types.ptr(Ptr->AddressSpace(), NewTextureType, Ptr->Access()));
+            else
+                Value->SetType(NewTextureType);
+        }
+    }
+    return true;
+}
+
+static WGSLShaderReflection CaptureSPIRVReflection(const std::vector<uint32_t>&  SPIRV,
+                                                   const tint::core::ir::Module& IR,
+                                                   bool                          LoadUniformBufferReflection)
+{
+    WGSLShaderReflection Reflection;
+    // SPIRVShaderResources uses OpSource to interpret HLSL matrix layouts and buffer
+    // names. Keep the legacy WGSL fallback for binaries stripped of source metadata.
+    bool HasSource = false;
+    for (size_t i = 5; i < SPIRV.size();)
+    {
+        const Uint32 WordCount = SPIRV[i] >> 16;
+        if (WordCount == 0 || WordCount > SPIRV.size() - i)
+            return Reflection;
+        if ((SPIRV[i] & 0xffffu) == static_cast<Uint32>(spv::Op::OpSource))
+            HasSource = true;
+        i += WordCount;
+    }
+    if (!HasSource)
+        return Reflection;
+
+    SPIRVShaderResources::CreateInfo ResCI;
+    ResCI.Name                        = "SPIR-V to WGSL conversion";
+    ResCI.LoadUniformBufferReflection = LoadUniformBufferReflection;
+    for (const auto* Function : IR.functions)
+    {
+        if (!Function->IsEntryPoint())
+            continue;
+        // Conversion normally receives a single shader. Do not infer reflection
+        // from one entry point when supplied bytecode contains several stages.
+        if (ResCI.ShaderType != SHADER_TYPE_UNKNOWN)
+            return Reflection;
+
+        if (Function->IsVertex())
+            ResCI.ShaderType = SHADER_TYPE_VERTEX;
+        else if (Function->IsFragment())
+            ResCI.ShaderType = SHADER_TYPE_PIXEL;
+        else
+            ResCI.ShaderType = SHADER_TYPE_COMPUTE;
+    }
+    if (ResCI.ShaderType == SHADER_TYPE_UNKNOWN)
+        return Reflection;
+
+    const SPIRVShaderResources Resources{GetRawAllocator(), SPIRV, ResCI};
+    for (Uint32 i = 0; i < Resources.GetTotalResources(); ++i)
+    {
+        const auto& Res = Resources.GetResource(i);
+        if (Res.Type == SPIRVShaderResourceAttribs::ResourceType::PushConstant ||
+            Res.Name == nullptr || Res.Name[0] == '\0')
+            continue;
+        const WGSLShaderReflection::BindingPoint Binding{
+            SPIRV[Res.DescriptorSetDecorationOffset],
+            SPIRV[Res.BindingDecorationOffset],
+        };
+        auto& Dst = Reflection.Resources[Binding];
+        Dst.Name  = Res.Name;
+        if (LoadUniformBufferReflection && i < Resources.GetNumUBs())
+        {
+            const ShaderCodeBufferDesc& Buffer = *Resources.GetUniformBufferDesc(i);
+
+            Dst.UniformBuffer       = std::make_unique<ShaderCodeBufferDescX>();
+            Dst.UniformBuffer->Size = Buffer.Size;
+            for (Uint32 v = 0; v < Buffer.NumVariables; ++v)
+                Dst.UniformBuffer->AddVariable(Buffer.pVariables[v]);
+        }
+    }
+    return Reflection;
+}
+#endif
+
+std::string ConvertSPIRVtoWGSL(const std::vector<uint32_t>& SPIRV, bool LoadUniformBufferReflection)
+{
+#if SPIRV_TO_WGSL_SUPPORTED
+    // Tint does not support HLSL reflection extensions. Strip them from a copy
+    // so the original SPIR-V remains available for reflection.
+    // Match the validation environment used by Tint, including relaxed block layouts.
+    auto ConversionSPIRV = OptimizeSPIRV(SPIRV, SPV_ENV_VULKAN_1_1, SPIRV_OPTIMIZATION_FLAG_STRIP_REFLECTION);
+    if (ConversionSPIRV.empty())
+    {
+        LOG_ERROR_MESSAGE("Failed to prepare SPIR-V for Tint conversion");
         return {};
     }
 
-    auto GenerationResult = tint::wgsl::writer::Generate(Program, {});
+    auto IR = tint::spirv::reader::ReadIR(ConversionSPIRV);
+    if (IR != tint::Success)
+    {
+        LOG_ERROR_MESSAGE("Tint SPIR-V reader failure:\n", IR.Failure().reason, "\n");
+        return {};
+    }
+
+    // Capture source reflection from the unmodified SPIR-V, before Tint raises
+    // buffer layouts or renames resources for WGSL.
+    WGSLShaderReflection Reflection = CaptureSPIRVReflection(SPIRV, IR.Get(), LoadUniformBufferReflection);
+
+    if (!RestoreTextureAccess(IR.Get()))
+        return {};
+
+    tint::wgsl::writer::Options WGSLWriterOptions;
+    WGSLWriterOptions.allow_non_uniform_derivatives = true;
+    WGSLWriterOptions.allowed_features              = tint::wgsl::AllowedFeatures::Everything();
+
+    auto GenerationResult = tint::wgsl::writer::WgslFromIR(IR.Get(), WGSLWriterOptions);
     if (GenerationResult != tint::Success)
     {
-        LOG_ERROR_MESSAGE("Tint WGSL writer failure:\nGeneate: " + GenerationResult.Failure().reason.Str() + "\n");
+        LOG_ERROR_MESSAGE("Tint WGSL writer failure:\n", GenerationResult.Failure().reason, "\n");
         return {};
     }
 
-    return GenerationResult->wgsl;
+    std::string WGSL = std::move(GenerationResult->wgsl);
+    AppendWGSLShaderReflection(WGSL, Reflection);
+    return WGSL;
+#else
+    (void)SPIRV;
+    (void)LoadUniformBufferReflection;
+    LOG_ERROR_MESSAGE("SPIR-V to WGSL conversion is not supported in this build; provide WGSL shaders instead.");
+    return {};
+#endif
 }
 
 static bool IsAtomic(const tint::core::type::Type* WGSLType)
@@ -257,7 +509,7 @@ static WGSLResourceMapping::const_iterator FindResourceAsArrayElement(const WGSL
         if (BindigIt == ResMapping.end())
             return ResMapping.end();
 
-        if (ArrayElem.Index < static_cast<int>(BindigIt->second.ArraySize))
+        if (static_cast<Uint32>(ArrayElem.Index) < BindigIt->second.ArraySize)
         {
             ArrayIndex = static_cast<Uint32>(ArrayElem.Index);
             return BindigIt;
@@ -269,7 +521,9 @@ static WGSLResourceMapping::const_iterator FindResourceAsArrayElement(const WGSL
 
 std::string RemapWGSLResourceBindings(const std::string&         WGSL,
                                       const WGSLResourceMapping& ResMapping,
-                                      const char*                EmulatedArrayIndexSuffix)
+                                      const char*                EmulatedArrayIndexSuffix,
+                                      const char*                EntryPoint,
+                                      std::string*               pRemappedEntryPoint)
 {
     tint::Source::File srcFile("", WGSL);
     tint::Program      Program = tint::wgsl::reader::Parse(&srcFile, {tint::wgsl::AllowedFeatures::Everything()});
@@ -280,22 +534,55 @@ std::string RemapWGSLResourceBindings(const std::string&         WGSL,
         return {};
     }
 
-    tint::ast::transform::BindingRemapper::BindingPoints BindingPoints;
+    WGSLShaderReflection Reflection;
+    if (!ParseWGSLShaderReflection(WGSL, Reflection))
+    {
+        LOG_ERROR_MESSAGE("Invalid WGSL reflection metadata");
+        return {};
+    }
+
+    std::unordered_map<tint::BindingPoint, tint::BindingPoint> BindingPoints;
+    WGSLShaderReflection                                       RemappedReflection;
 
     tint::inspector::Inspector Inspector{Program};
-    for (tint::inspector::EntryPoint& EntryPoint : Inspector.GetEntryPoints())
+    const auto                 EntryPoints = Inspector.GetEntryPoints();
+    if (EntryPoint != nullptr && std::none_of(EntryPoints.begin(), EntryPoints.end(), [EntryPoint](const auto& EP) { return EP.name == EntryPoint; }))
     {
-        for (tint::inspector::ResourceBinding& Binding : Inspector.GetResourceBindings(EntryPoint.name))
+        LOG_ERROR_MESSAGE("WGSL entry point '", EntryPoint, "' was not found");
+        return {};
+    }
+    for (const tint::inspector::EntryPoint& EP : EntryPoints)
+    {
+        if (EntryPoint != nullptr && EP.name != EntryPoint)
+            continue;
+
+        // Capture names before Tint's IR and WGSL writers can rename them. IDs
+        // remain stable, including implicitly assigned IDs and workgroup-size overrides.
+        for (const auto& Override : EP.overrides)
+        {
+            const auto It = Reflection.SpecializationConstants.find(Override.id.value);
+            RemappedReflection.SpecializationConstants.emplace(Override.id.value,
+                                                               It != Reflection.SpecializationConstants.end() ? It->second : Override.name);
+        }
+
+        // Bindings may be shared by resources in separate entry points, but
+        // resources used by the same entry point need distinct destinations.
+        std::unordered_map<tint::BindingPoint, tint::BindingPoint> Destinations;
+        for (const tint::inspector::ResourceBinding& Binding : Inspector.GetResourceBindings(EP.name))
         {
             Uint32 ArrayIndex = 0;
 
-            auto DstBindigIt = ResMapping.find(Binding.variable_name);
+            // Original names take precedence over generated identifiers. Fall back
+            // to the legacy name rules for native WGSL and older shader archives.
+            const auto* SourceResource = Reflection.Find(Binding.bind_group, Binding.binding);
+            std::string ResourceName   = SourceResource != nullptr ? SourceResource->Name : Binding.variable_name;
+            auto        DstBindigIt    = ResMapping.find(ResourceName);
             if (EmulatedArrayIndexSuffix != nullptr && DstBindigIt == ResMapping.end())
             {
-                DstBindigIt = FindResourceAsArrayElement(ResMapping, EmulatedArrayIndexSuffix, Binding.variable_name, ArrayIndex);
+                DstBindigIt = FindResourceAsArrayElement(ResMapping, EmulatedArrayIndexSuffix, ResourceName, ArrayIndex);
             }
 
-            if (DstBindigIt == ResMapping.end())
+            if (DstBindigIt == ResMapping.end() && SourceResource == nullptr)
             {
                 const std::string AltName = GetWGSLResourceAlternativeName(Program, Binding);
                 if (!AltName.empty())
@@ -305,43 +592,145 @@ std::string RemapWGSLResourceBindings(const std::string&         WGSL,
                     {
                         DstBindigIt = FindResourceAsArrayElement(ResMapping, EmulatedArrayIndexSuffix, AltName, ArrayIndex);
                     }
+                    if (DstBindigIt != ResMapping.end())
+                        ResourceName = AltName;
                 }
             }
 
             if (DstBindigIt != ResMapping.end())
             {
                 const WGSLResourceBindingInfo& DstBindig = DstBindigIt->second;
-                BindingPoints.emplace(tint::ast::transform::BindingPoint{Binding.bind_group, Binding.binding}, tint::ast::transform::BindingPoint{DstBindig.Group, DstBindig.Index + ArrayIndex});
+                if (DstBindig.ArraySize == 0 || ArrayIndex >= DstBindig.ArraySize)
+                {
+                    LOG_ERROR_MESSAGE("Invalid resource array size for variable '", ResourceName, "'");
+                    return {};
+                }
+                if (ArrayIndex > (std::numeric_limits<Uint32>::max)() - DstBindig.Index)
+                {
+                    LOG_ERROR_MESSAGE("Binding index overflows for variable '", ResourceName, "'");
+                    return {};
+                }
+
+                const tint::BindingPoint SrcPoint{Binding.bind_group, Binding.binding};
+                const tint::BindingPoint DstPoint{DstBindig.Group, DstBindig.Index + ArrayIndex};
+                const auto               SrcInsertion = BindingPoints.emplace(SrcPoint, DstPoint);
+                if (!SrcInsertion.second && !(SrcInsertion.first->second == DstPoint))
+                {
+                    LOG_ERROR_MESSAGE("Conflicting remappings for binding ", SrcPoint.binding, " in group ", SrcPoint.group);
+                    return {};
+                }
+                const auto DstInsertion = Destinations.emplace(DstPoint, SrcPoint);
+                if (!DstInsertion.second && !(DstInsertion.first->second == SrcPoint))
+                {
+                    LOG_ERROR_MESSAGE("Resource binding collision for variable '", ResourceName, "' in entry point '", EP.name, "'");
+                    return {};
+                }
+
+                // Native WGSL has no input metadata. Save the name used by the
+                // application, including an emulated array element's full suffix.
+                auto NameInsertion = RemappedReflection.Resources.emplace(
+                    WGSLShaderReflection::BindingPoint{DstPoint.group, DstPoint.binding}, WGSLShaderReflection::Resource{});
+                if (!NameInsertion.second && NameInsertion.first->second.Name != ResourceName)
+                {
+                    LOG_ERROR_MESSAGE("Conflicting resource names at remapped binding ", DstPoint.binding, " in group ", DstPoint.group);
+                    return {};
+                }
+                NameInsertion.first->second.Name = std::move(ResourceName);
             }
             else
             {
-                LOG_ERROR_MESSAGE("Binding for variable '", Binding.variable_name, "' is not found in the remap indices");
+                LOG_ERROR_MESSAGE("Binding for variable '", ResourceName, "' is not found in the remap indices");
+                return {};
             }
         }
     }
 
-    tint::ast::transform::Manager Manager;
-    tint::ast::transform::DataMap Inputs;
-    tint::ast::transform::DataMap Outputs;
+    auto IR = tint::wgsl::reader::ProgramToLoweredIR(Program);
+    if (IR != tint::Success)
+    {
+        LOG_ERROR_MESSAGE("Tint WGSL to IR conversion failure:\n", IR.Failure().reason, "\n");
+        return {};
+    }
 
-    Inputs.Add<tint::ast::transform::BindingRemapper::Remappings>(BindingPoints, tint::ast::transform::BindingRemapper::AccessControls{}, false);
-    Manager.Add<tint::ast::transform::BindingRemapper>();
-    tint::ast::transform::Output TransformResult = Manager.Run(Program, Inputs, Outputs);
+    if (EntryPoint != nullptr)
+    {
+        // Reflection and the pipeline signature describe only the selected entry
+        // point. Remove the other resources before changing their shared bindings.
+        auto SelectionResult = tint::core::ir::transform::SingleEntryPoint(IR.Get(), EntryPoint);
+        if (SelectionResult != tint::Success)
+        {
+            LOG_ERROR_MESSAGE("Tint entry point selection failure:\n", SelectionResult.Failure().reason, "\n");
+            return {};
+        }
+    }
 
-    auto GenerationResult = tint::wgsl::writer::Generate(TransformResult.program, {});
+    auto RemapResult = tint::core::ir::transform::BindingRemapper(IR.Get(), BindingPoints);
+    if (RemapResult != tint::Success)
+    {
+        LOG_ERROR_MESSAGE("Tint binding remapper failure:\n", RemapResult.Failure().reason, "\n");
+        return {};
+    }
 
+    tint::wgsl::writer::Options WGSLWriterOptions;
+    WGSLWriterOptions.allow_non_uniform_derivatives = true;
+    WGSLWriterOptions.allowed_features              = tint::wgsl::AllowedFeatures::Everything();
+    // WgslFromIR performs these same two steps. Keep the generated program so
+    // we can read the final name: Tint may rename an entry point both in IR and
+    // while creating the WGSL program, without updating the IR name in the latter case.
+    auto RemappedProgram = tint::wgsl::writer::ProgramFromIR(IR.Get(), WGSLWriterOptions);
+    if (RemappedProgram != tint::Success)
+    {
+        LOG_ERROR_MESSAGE("Tint WGSL writer failure:\nProgram: ", RemappedProgram.Failure().reason, "\n");
+        return {};
+    }
+
+    std::string RemappedEntryPoint;
+    if (EntryPoint != nullptr)
+    {
+        for (const auto* Function : RemappedProgram->AST().Functions())
+        {
+            if (!Function->IsEntryPoint())
+                continue;
+            if (!RemappedEntryPoint.empty())
+            {
+                LOG_ERROR_MESSAGE("Remapped WGSL contains more than one entry point");
+                return {};
+            }
+            RemappedEntryPoint = Function->name->symbol.Name();
+        }
+        if (RemappedEntryPoint.empty())
+        {
+            LOG_ERROR_MESSAGE("Remapped WGSL contains no entry point");
+            return {};
+        }
+    }
+
+    auto GenerationResult = tint::wgsl::writer::Generate(RemappedProgram.Get(), WGSLWriterOptions);
     if (GenerationResult != tint::Success)
     {
-        LOG_ERROR_MESSAGE("Tint WGSL writer failure:\nGeneate: ", GenerationResult.Failure().reason.Str(), "\n");
+        LOG_ERROR_MESSAGE("Tint WGSL writer failure:\nGenerate: ", GenerationResult.Failure().reason, "\n");
         return {};
     }
 
     std::string PatchedWGSL = std::move(GenerationResult->wgsl);
 
+    // Tint does not preserve comments. Carry reflection across the rewrite using
+    // the same binding-point mapping as the shader, including emulated arrays.
+    for (auto& Entry : Reflection.Resources)
+    {
+        auto It = BindingPoints.find(tint::BindingPoint{Entry.first.Group, Entry.first.Binding});
+        if (It != BindingPoints.end())
+            RemappedReflection.Resources[{It->second.group, It->second.binding}] = std::move(Entry.second);
+    }
+    AppendWGSLShaderReflection(PatchedWGSL, RemappedReflection);
+
     // If original WGSL contains shader source language definition, append it to the patched WGSL
     SHADER_SOURCE_LANGUAGE SrcLang = ParseShaderSourceLanguageDefinition(WGSL);
     if (SrcLang != SHADER_SOURCE_LANGUAGE_DEFAULT)
         AppendShaderSourceLanguageDefinition(PatchedWGSL, SrcLang);
+
+    if (pRemappedEntryPoint != nullptr)
+        *pRemappedEntryPoint = std::move(RemappedEntryPoint);
 
     return PatchedWGSL;
 }

@@ -426,7 +426,12 @@ DILIGENT_TYPED_ENUM(SHADER_COMPILE_FLAGS, Uint32)
     /// Since DXC does not support GLSL, this flag is ignored when SHADER_COMPILER_DXC is used.
     SHADER_COMPILE_FLAG_HLSL_TO_SPIRV_VIA_GLSL = 1u << 4u,
 
-    SHADER_COMPILE_FLAG_LAST = SHADER_COMPILE_FLAG_HLSL_TO_SPIRV_VIA_GLSL
+    /// Enable native 16-bit HLSL types (float16_t, int16_t, uint16_t).
+    /// Requires DXC and shader model 6.2 or newer. Ignored by other compilers.
+    /// Applications must enable the device features required by the shader.
+    SHADER_COMPILE_FLAG_ENABLE_16BIT_TYPES = 1u << 5u,
+
+    SHADER_COMPILE_FLAG_LAST = SHADER_COMPILE_FLAG_ENABLE_16BIT_TYPES
 };
 DEFINE_FLAG_ENUM_OPERATORS(SHADER_COMPILE_FLAGS);
 

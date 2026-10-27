@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +28,8 @@
 #pragma once
 
 #include <memory>
+#include <string>
+#include <unordered_set>
 #include "PhysicalDevice.hpp"
 
 namespace VulkanUtilities
@@ -99,6 +101,8 @@ public:
         const VkPhysicalDeviceFeatures&    EnabledFeatures;
         const ExtensionFeatures&           EnabledExtFeatures;
         const VkAllocationCallbacks* const vkAllocator;
+        uint32_t                           EnabledExtensionCount   = 0;
+        const char* const*                 ppEnabledExtensionNames = nullptr;
     };
     static std::shared_ptr<LogicalDevice> Create(const CreateInfo& CI);
 
@@ -129,6 +133,11 @@ public:
     }
 
     void WaitIdle() const;
+
+    bool IsExtensionEnabled(const char* Name) const
+    {
+        return m_EnabledExtensions.find(Name) != m_EnabledExtensions.end();
+    }
 
     // clang-format off
     CommandPoolWrapper  CreateCommandPool   (const VkCommandPoolCreateInfo& CmdPoolCI,   const char* DebugName = "") const;
@@ -263,6 +272,7 @@ private:
                                                              const char*                   ObjectType) const;
 
     VkDevice                           m_VkDevice = VK_NULL_HANDLE;
+    std::unordered_set<std::string>    m_EnabledExtensions;
     const VkAllocationCallbacks* const m_VkAllocator;
     const VkPhysicalDeviceFeatures     m_EnabledFeatures;
     ExtensionFeatures                  m_EnabledExtFeatures = {};

@@ -810,7 +810,7 @@ bool VerifyBuildTLASAttribs(const BuildTLASAttribs& Attribs, const RayTracingPro
 
     CHECK_BUILD_TLAS_ATTRIBS(Attribs.pTLAS != nullptr, "pTLAS must not be null.");
     CHECK_BUILD_TLAS_ATTRIBS(Attribs.pScratchBuffer != nullptr, "pScratchBuffer must not be null.");
-    CHECK_BUILD_TLAS_ATTRIBS(Attribs.pInstances != nullptr, "pInstances must not be null.");
+    CHECK_BUILD_TLAS_ATTRIBS(Attribs.pInstances != nullptr || Attribs.InstanceCount == 0, "pInstances must not be null for a nonempty build.");
     CHECK_BUILD_TLAS_ATTRIBS(Attribs.pInstanceBuffer != nullptr, "pInstanceBuffer must not be null.");
 
     CHECK_BUILD_TLAS_ATTRIBS(Attribs.BindingMode == HIT_GROUP_BINDING_MODE_USER_DEFINED || Attribs.HitGroupStride != 0,
@@ -870,8 +870,9 @@ bool VerifyBuildTLASAttribs(const BuildTLASAttribs& Attribs, const RayTracingPro
     CHECK_BUILD_TLAS_ATTRIBS(AutoOffsetCounter == 0 || AutoOffsetCounter == Attribs.InstanceCount,
                              "all pInstances[i].ContributionToHitGroupIndex must be TLAS_INSTANCE_OFFSET_AUTO, or none of them should.");
 
-    CHECK_BUILD_TLAS_ATTRIBS(Attribs.InstanceBufferOffset <= InstDesc.Size,
-                             "InstanceBufferOffset (", Attribs.InstanceBufferOffset, ") is greater than the buffer size (", InstDesc.Size, ").");
+    CHECK_BUILD_TLAS_ATTRIBS(Attribs.InstanceBufferOffset < InstDesc.Size,
+                             "InstanceBufferOffset (", Attribs.InstanceBufferOffset, ") must be inside the instance buffer (", InstDesc.Size,
+                             " bytes), including zero-instance builds.");
 
     CHECK_BUILD_TLAS_ATTRIBS(InstDesc.Size - Attribs.InstanceBufferOffset >= InstDataSize,
                              "pInstanceBuffer size (", InstDesc.Size, ") is too small: at least ",

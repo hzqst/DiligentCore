@@ -137,7 +137,8 @@ HRESULT CompileShader(const char*             Source,
     // dwShaderFlags |= D3D10_SHADER_OPTIMIZATION_LEVEL3;
 #endif
 
-    static_assert(SHADER_COMPILE_FLAG_LAST == 1u << 4u, "Did you add a new shader compile flag? You may need to handle it here.");
+    // Native 16-bit types are supported by DXC only, not FXC.
+    static_assert(SHADER_COMPILE_FLAG_LAST == 1u << 5u, "Did you add a new shader compile flag? You may need to handle it here.");
     if (ShaderCI.CompileFlags & SHADER_COMPILE_FLAG_ENABLE_UNBOUNDED_ARRAYS)
         dwShaderFlags |= D3DCOMPILE_ENABLE_UNBOUNDED_DESCRIPTOR_TABLES;
 

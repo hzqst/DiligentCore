@@ -215,6 +215,8 @@ RenderDeviceD3D12Impl::RenderDeviceD3D12Impl(IReferenceCounters*          pRefCo
             // Header may not have constants for D3D_SHADER_MODEL_6_1 and above.
             const D3D_SHADER_MODEL Models[] = //
                 {
+                    static_cast<D3D_SHADER_MODEL>(0x69), // HitObject and shader execution reordering
+                    static_cast<D3D_SHADER_MODEL>(0x68),
                     static_cast<D3D_SHADER_MODEL>(0x67),
                     static_cast<D3D_SHADER_MODEL>(0x66),
                     static_cast<D3D_SHADER_MODEL>(0x65), // minimum required for mesh shader and DXR 1.1

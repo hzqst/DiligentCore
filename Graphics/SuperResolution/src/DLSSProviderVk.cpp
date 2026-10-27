@@ -59,16 +59,18 @@ NVSDK_NGX_Result CreateDLSSFeatureVk(IDeviceContext*               pContext,
 class SuperResolutionVk_DLSS final : public SuperResolutionDLSS<CreateDLSSFeatureVk, NVSDK_NGX_VULKAN_ReleaseFeature>
 {
 public:
-    SuperResolutionVk_DLSS(IReferenceCounters*        pRefCounters,
-                           const SuperResolutionDesc& Desc,
-                           const SuperResolutionInfo& Info,
-                           NVSDK_NGX_Parameter*       pNGXParams) :
-        SuperResolutionDLSS{pRefCounters, Desc, Info, pNGXParams}
+    SuperResolutionVk_DLSS(IReferenceCounters*         pRefCounters,
+                           const SuperResolutionDesc&  Desc,
+                           const SuperResolutionInfo&  Info,
+                           IRenderDevice*              pDevice,
+                           std::shared_ptr<NGXRuntime> Runtime) :
+        SuperResolutionDLSS{pRefCounters, Desc, Info, pDevice, std::move(Runtime)}
     {
     }
 
     virtual void DILIGENT_CALL_TYPE Execute(const ExecuteSuperResolutionAttribs& Attribs) override final
     {
+        NGXLock Lock;
         ValidateExecuteSuperResolutionAttribs(m_Desc, m_Info, Attribs);
 
         NVSDK_NGX_Handle* pDLSSFeature = AcquireFeature(Attribs);
@@ -94,7 +96,9 @@ public:
 
         NVSDK_NGX_Resource_VK ColorResource  = CreateNGXResourceVK(Attribs.pColorTextureSRV, VK_IMAGE_ASPECT_COLOR_BIT, false);
         NVSDK_NGX_Resource_VK OutputResource = CreateNGXResourceVK(Attribs.pOutputTextureView, VK_IMAGE_ASPECT_COLOR_BIT, true);
-        NVSDK_NGX_Resource_VK DepthResource  = CreateNGXResourceVK(Attribs.pDepthTextureSRV, VK_IMAGE_ASPECT_DEPTH_BIT, false);
+        const auto            DepthComponent = GetTextureFormatAttribs(Attribs.pDepthTextureSRV->GetTexture()->GetDesc().Format).ComponentType;
+        const auto            DepthAspect    = DepthComponent == COMPONENT_TYPE_DEPTH || DepthComponent == COMPONENT_TYPE_DEPTH_STENCIL ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+        NVSDK_NGX_Resource_VK DepthResource  = CreateNGXResourceVK(Attribs.pDepthTextureSRV, DepthAspect, false);
         NVSDK_NGX_Resource_VK MotionResource = CreateNGXResourceVK(Attribs.pMotionVectorsSRV, VK_IMAGE_ASPECT_COLOR_BIT, false);
 
         NVSDK_NGX_Resource_VK ExposureResource = {};
@@ -144,6 +148,7 @@ public:
     DLSSProviderVk(IRenderDevice* pDevice) :
         m_pDevice{pDevice, IID_RenderDeviceVk}
     {
+        DLSSProviderBase::m_pDevice = pDevice;
         if (!m_pDevice)
         {
             if (pDevice == nullptr)
@@ -156,60 +161,15 @@ public:
         VkPhysicalDevice vkPhysDevice = m_pDevice->GetVkPhysicalDevice();
         VkDevice         vkDevice     = m_pDevice->GetVkDevice();
 
-        NVSDK_NGX_Result Result = NVSDK_NGX_VULKAN_Init_with_ProjectID(DLSSProjectId, NVSDK_NGX_ENGINE_TYPE_CUSTOM, "0", DLSSAppDataPath, vkInstance, vkPhysDevice, vkDevice);
-
-        {
-            Uint32                         ExtCount    = 0;
-            VkExtensionProperties*         pExtensions = nullptr;
-            NVSDK_NGX_FeatureDiscoveryInfo FeatureInfo = {};
-            NVSDK_NGX_Result               ExtResult   = NVSDK_NGX_VULKAN_GetFeatureDeviceExtensionRequirements(vkInstance, vkPhysDevice, &FeatureInfo, &ExtCount, &pExtensions);
-            if (NVSDK_NGX_SUCCEED(ExtResult) && ExtCount > 0 && pExtensions != nullptr)
-            {
-                /* TODO: Need to implement IsExtensionEnabled in VulkanUtilities::LogicalDevice
-            const VulkanUtilities::LogicalDevice& LogicDevice = pDeviceVk->GetLogicalDevice();
-            for (Uint32 ExtensionIdx = 0; ExtensionIdx < ExtCount; ++ExtensionIdx)
-            {
-                if (!LogicDevice.IsExtensionEnabled(pExtensions[ExtensionIdx].extensionName))
-                {
-                    LOG_ERROR_AND_THROW("DLSS requires Vulkan device extension '", pExtensions[ExtensionIdx].extensionName,
-                                        "' which is not supported by the physical device. "
-                                        "Enable it via EngineVkCreateInfo::ppDeviceExtensionNames.");
-                }
-            }
-            */
-            }
-        }
-
-        if (NVSDK_NGX_FAILED(Result))
-        {
-            LOG_WARNING_MESSAGE("NVIDIA NGX Vulkan initialization failed. DLSS will not be available. Result: ", static_cast<Uint32>(Result));
-            return;
-        }
-
-        Result = NVSDK_NGX_VULKAN_GetCapabilityParameters(&m_pNGXParams);
-        if (NVSDK_NGX_FAILED(Result) || m_pNGXParams == nullptr)
-        {
-            LOG_WARNING_MESSAGE("Failed to get NGX Vulkan capability parameters. DLSS will not be available. Result: ", static_cast<Uint32>(Result));
-            m_pNGXParams = nullptr;
-            NVSDK_NGX_VULKAN_Shutdown1(vkDevice);
-        }
-    }
-
-    ~DLSSProviderVk()
-    {
-        if (m_pNGXParams != nullptr)
-        {
-            m_pDevice->IdleGPU();
-            NVSDK_NGX_VULKAN_DestroyParameters(m_pNGXParams);
-            NVSDK_NGX_VULKAN_Shutdown1(m_pDevice->GetVkDevice());
-        }
+        m_Runtime    = AcquireNGXRuntime({NGXBackend::Vulkan, vkDevice, vkInstance, vkPhysDevice});
+        m_pNGXParams = m_Runtime ? GetNGXCapabilities(*m_Runtime) : nullptr;
     }
 
     void CreateSuperResolution(const SuperResolutionDesc& Desc, const SuperResolutionInfo& Info, ISuperResolution** ppUpscaler)
     {
         DEV_CHECK_ERR(ppUpscaler != nullptr, "ppUpscaler must not be null");
 
-        SuperResolutionVk_DLSS* pUpscaler = NEW_RC_OBJ(GetRawAllocator(), "SuperResolutionVk_DLSS instance", SuperResolutionVk_DLSS)(Desc, Info, m_pNGXParams);
+        SuperResolutionVk_DLSS* pUpscaler = NEW_RC_OBJ(GetRawAllocator(), "SuperResolutionVk_DLSS instance", SuperResolutionVk_DLSS)(Desc, Info, m_pDevice, m_Runtime);
         pUpscaler->QueryInterface(IID_SuperResolution, reinterpret_cast<IObject**>(ppUpscaler));
     }
 

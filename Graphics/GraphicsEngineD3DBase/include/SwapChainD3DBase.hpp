@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -113,6 +113,9 @@ protected:
 
     void CreateDXGISwapChain(IUnknown* pD3D11DeviceOrD3D12CmdQueue)
     {
+        // The previous swap chain, if any, has already been released. Close its waitable object.
+        ReleaseFrameLatencyWaitableObject();
+
 #if PLATFORM_WIN32
         HWND hWnd = reinterpret_cast<HWND>(m_Window.hWnd);
         if (m_SwapChainDesc.Width == 0 || m_SwapChainDesc.Height == 0)
@@ -278,7 +281,6 @@ protected:
         hr = pSwapChain1.QueryInterface(&m_pSwapChain);
         CHECK_D3D_RESULT_THROW(hr, "Failed to query the required swap chain interface");
 
-        ReleaseFrameLatencyWaitableObject();
         if ((swapChainDesc.Flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT) != 0)
         {
             CComPtr<IDXGISwapChain2> pSwapChain2;
@@ -293,7 +295,6 @@ protected:
         }
         else
         {
-            m_FrameLatencyWaitableObject = NULL;
             SetDXGIDeviceMaximumFrameLatency();
         }
     }

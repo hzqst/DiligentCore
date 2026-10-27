@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -50,6 +50,8 @@ LogicalDevice::LogicalDevice(const CreateInfo& CI) :
     m_EnabledFeatures{CI.EnabledFeatures},
     m_EnabledExtFeatures{CI.EnabledExtFeatures}
 {
+    for (uint32_t i = 0; i < CI.EnabledExtensionCount; ++i)
+        m_EnabledExtensions.emplace(CI.ppEnabledExtensionNames[i]);
 #if DILIGENT_USE_VOLK
     // Since we only use one device at this time, load device function entries
     // https://github.com/zeux/volk#optimizing-device-calls

@@ -804,6 +804,9 @@ void DXCompilerImpl::Compile(const ShaderCreateInfo& ShaderCI,
         UNEXPECTED("Unknown compiler target");
     }
 
+    if ((ShaderCI.CompileFlags & SHADER_COMPILE_FLAG_ENABLE_16BIT_TYPES) != 0)
+        DxilArgs.push_back(L"-enable-16bit-types");
+
     if (ShaderCI.pShaderSourceStreamFactory != nullptr)
     {
         // Add the factory root to DXC's include search paths. This enables system

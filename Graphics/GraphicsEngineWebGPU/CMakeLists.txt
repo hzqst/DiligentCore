@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.10)
+cmake_minimum_required (VERSION 3.10...3.22)
 
 project(Diligent-GraphicsEngineWebGPU CXX)
 
@@ -33,10 +33,10 @@ set(INCLUDE
     include/SyncPointWebGPU.hpp
     include/TextureViewWebGPUImpl.hpp
     include/TextureWebGPUImpl.hpp
+    include/WebGPUDefinitions.hpp
     include/WebGPUObjectWrappers.hpp
     include/WebGPUTypeConversions.hpp
     include/WebGPUResourceBase.hpp
-    include/WebGPUStubs.hpp
 )
 
 set(INTERFACE 
@@ -96,6 +96,9 @@ set(DLL_SOURCE
 add_library(Diligent-GraphicsEngineWebGPUInterface INTERFACE)
 target_link_libraries     (Diligent-GraphicsEngineWebGPUInterface INTERFACE Diligent-GraphicsEngineInterface)
 target_include_directories(Diligent-GraphicsEngineWebGPUInterface INTERFACE interface)
+if(PLATFORM_WEB)
+    target_link_libraries(Diligent-GraphicsEngineWebGPUInterface INTERFACE emdawnwebgpu_c_include)
+endif()
 
 add_library(Diligent-GraphicsEngineWebGPU-static STATIC 
     ${SRC} ${INTERFACE} ${INCLUDE}
@@ -134,7 +137,9 @@ else()
     list(APPEND PRIVATE_DEPENDENCIES SPIRV-Tools-opt)
 endif()
 
-if (NOT PLATFORM_WEB)
+if (PLATFORM_WEB)
+    list(APPEND PRIVATE_DEPENDENCIES emdawnwebgpu_c)
+else()
     list(APPEND PRIVATE_DEPENDENCIES dawn_native dawn_proc)
 endif()
 
@@ -166,7 +171,7 @@ else()
 endif()
 
 set_common_target_properties(Diligent-GraphicsEngineWebGPU-shared)
-set_common_target_properties(Diligent-GraphicsEngineWebGPU-static)
+set_common_target_properties(Diligent-GraphicsEngineWebGPU-static 20)
 
 if (${DILIGENT_NO_GLSLANG})
     message("GLSLang is not being built. WebGPU backend will only be able to consume SPIRV byte code.")
@@ -179,7 +184,7 @@ PRIVATE
 )
 
 if (PLATFORM_WEB)
-    target_link_options(Diligent-GraphicsEngineWebGPU-static PUBLIC "SHELL: -s USE_WEBGPU=1 -s USE_PTHREADS=1")
+    target_link_options(Diligent-GraphicsEngineWebGPU-static PUBLIC "-pthread")
 endif()
 
 target_compile_definitions(Diligent-GraphicsEngineWebGPU-shared PUBLIC DILIGENT_WEBGPU_SHARED=1)

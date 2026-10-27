@@ -394,6 +394,10 @@ GPUTestingEnvironment::GPUTestingEnvironment(const CreateInfo& EnvCI, const Swap
             };
 
             EngineVkCreateInfo EngineCI;
+#    if PLATFORM_WIN32
+            // Opt in explicitly so ordinary tests still run on systems without NGX.
+            EngineCI.EnableRayReconstruction = GetEnvironmentVariableA("DILIGENT_TEST_RAY_RECONSTRUCTION", nullptr, 0) != 0;
+#    endif
             EngineCI.AdapterId = FindAdapter(Adapters, EnvCI.AdapterType, EnvCI.AdapterId);
             AddContext(COMMAND_QUEUE_TYPE_GRAPHICS, "Graphics", EngineCI.AdapterId);
             AddContext(COMMAND_QUEUE_TYPE_COMPUTE, "Compute", EngineCI.AdapterId);

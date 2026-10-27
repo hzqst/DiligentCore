@@ -119,14 +119,42 @@ backend, output resolution, and optimization type.
 
 ### Creating the Factory
 
+On Windows, DLSS SR and Ray Reconstruction share `DiligentNGX_64d.dll` or
+`DiligentNGX_64r.dll`. `copy_required_dlls()` deploys this runtime automatically.
+Standalone consumers that manage DLL deployment themselves must call
+`copy_diligent_ngx_runtime(target)` as well as `copy_dlss_dlls(target)`.
+The factory and upscaler retain their NGX runtime references independently, so an
+upscaler may outlive its factory and coexist with Ray Reconstruction objects.
+
 The factory is created per render device. On Windows, the module can be loaded as a shared library:
 
 ```cpp
 #include "SuperResolutionFactoryLoader.h"
 
 RefCntAutoPtr<ISuperResolutionFactory> pSRFactory;
-LoadAndCreateSuperResolutionFactory(pDevice, &pSRFactory);
+SuperResolutionFactoryCreateInfo FactoryCreateInfo;
+FactoryCreateInfo.pDevice = pDevice;
+LoadAndCreateSuperResolutionFactory(FactoryCreateInfo, &pSRFactory);
 ```
+
+`SuperResolutionFSRCreateInfo` can provide archived pipeline states for FSR, avoiding runtime shader compilation:
+
+```cpp
+SuperResolutionFSRCreateInfo FSRCreateInfo;
+FSRCreateInfo.pDearchiver = pDearchiver;
+FSRCreateInfo.EASUPSOName = "FSR::EASU PSO";
+FSRCreateInfo.RCASPSOName = "FSR::RCAS PSO";
+
+SuperResolutionFactoryCreateInfo FactoryCI;
+FactoryCI.pDevice        = pDevice;
+FactoryCI.pFSRCreateInfo = &FSRCreateInfo;
+
+RefCntAutoPtr<ISuperResolutionFactory> pSRFactory;
+LoadAndCreateSuperResolutionFactory(FactoryCI, &pSRFactory);
+```
+
+When the optional FSR attributes are omitted, FSR compiles the shaders and creates the pipeline states at runtime.
+When they are provided, the dearchiver must contain both named graphics pipeline states. FSR unpacks and caches a separate pair for every requested output format, overriding the first render target format during unpacking.
 
 ### Enumerating Available Variants
 

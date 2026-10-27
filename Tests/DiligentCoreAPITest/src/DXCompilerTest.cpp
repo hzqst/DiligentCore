@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2024 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -159,6 +159,36 @@ float4 GetColor()
     pDXC->Compile(ShaderCI, ShaderVersion{6, 0}, nullptr, &pDXIL, nullptr, &pCompilerOutput);
 
     ASSERT_TRUE(pDXIL) << (pCompilerOutput != nullptr ? static_cast<const char*>(pCompilerOutput->GetConstDataPtr()) : "");
+}
+
+TEST(DXCompilerTest, Native16BitTypes)
+{
+    for (auto Target : {DXCompilerTarget::Direct3D12, DXCompilerTarget::Vulkan})
+    {
+        auto pDXC = CreateDXCompiler(Target, 0, nullptr);
+        ASSERT_TRUE(pDXC);
+
+        ShaderCreateInfo ShaderCI;
+        ShaderCI.Desc.Name       = "Native 16-bit types";
+        ShaderCI.Desc.ShaderType = SHADER_TYPE_COMPUTE;
+        ShaderCI.EntryPoint      = "main";
+        ShaderCI.SourceLanguage  = SHADER_SOURCE_LANGUAGE_HLSL;
+        ShaderCI.CompileFlags    = SHADER_COMPILE_FLAG_ENABLE_16BIT_TYPES;
+        ShaderCI.Source          = R"(
+StructuredBuffer<float> Input;
+RWStructuredBuffer<float> Output;
+[numthreads(1, 1, 1)]
+void main(uint3 id : SV_DispatchThreadID)
+{
+    float16_t value = float16_t(Input[id.x]);
+    uint16_t index = uint16_t(id.x);
+    Output[index] = float(value * value);
+})";
+        CComPtr<IDxcBlob>        pByteCode;
+        RefCntAutoPtr<IDataBlob> pCompilerOutput;
+        pDXC->Compile(ShaderCI, ShaderVersion{6, 2}, nullptr, &pByteCode, nullptr, &pCompilerOutput);
+        ASSERT_TRUE(pByteCode) << (pCompilerOutput ? static_cast<const char*>(pCompilerOutput->GetConstDataPtr()) : "");
+    }
 }
 
 TEST(DXCompilerTest, Reflection)
