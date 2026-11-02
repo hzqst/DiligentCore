@@ -88,7 +88,7 @@ public:
                        IPipelineState*            pEASU_PSO,
                        IPipelineState*            pRCAS_PSO);
 
-    virtual void DILIGENT_CALL_TYPE Execute(const ExecuteSuperResolutionAttribs& Attribs) override final;
+    virtual Bool DILIGENT_CALL_TYPE Execute(const ExecuteSuperResolutionAttribs& Attribs) override final;
 
 private:
     RefCntAutoPtr<IPipelineState>         m_pEASU_PSO;
@@ -156,7 +156,7 @@ SuperResolutionFSR::SuperResolutionFSR(IReferenceCounters*        pRefCounters,
     }
 }
 
-void SuperResolutionFSR::Execute(const ExecuteSuperResolutionAttribs& Attribs)
+Bool SuperResolutionFSR::Execute(const ExecuteSuperResolutionAttribs& Attribs)
 {
     ValidateExecuteSuperResolutionAttribs(m_Desc, m_Info, Attribs);
 
@@ -198,6 +198,7 @@ void SuperResolutionFSR::Execute(const ExecuteSuperResolutionAttribs& Attribs)
     }
 
     pContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
+    return True;
 }
 
 

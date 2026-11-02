@@ -66,14 +66,14 @@ public:
     {
     }
 
-    virtual void DILIGENT_CALL_TYPE Execute(const ExecuteSuperResolutionAttribs& Attribs) override final
+    virtual Bool DILIGENT_CALL_TYPE Execute(const ExecuteSuperResolutionAttribs& Attribs) override final
     {
         NGXLock Lock;
         ValidateExecuteSuperResolutionAttribs(m_Desc, m_Info, Attribs);
 
         NVSDK_NGX_Handle* pDLSSFeature = AcquireFeature(Attribs);
         if (pDLSSFeature == nullptr)
-            return;
+            return False;
 
         TransitionResourceStates(Attribs);
 
@@ -109,8 +109,10 @@ public:
         if (NVSDK_NGX_FAILED(Result))
             LOG_ERROR_MESSAGE("DLSS D3D12 evaluation failed. NGX Result: ", static_cast<Uint32>(Result));
 
+        // Keep the tracked output state consistent whether or not the evaluation succeeded.
         pCtx->TransitionTextureState(Attribs.pOutputTextureView->GetTexture(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
         pCtx->Flush();
+        return NVSDK_NGX_SUCCEED(Result) ? True : False;
     }
 };
 

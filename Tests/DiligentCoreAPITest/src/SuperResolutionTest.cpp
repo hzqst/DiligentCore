@@ -25,6 +25,7 @@
  */
 
 #include <algorithm>
+#include <cstring>
 #include <string>
 
 #include "GPUTestingEnvironment.hpp"
@@ -300,7 +301,7 @@ float4 RCAS(float4 Position : SV_Position) : SV_Target
             Attribs.pColorTextureSRV   = pInput->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE);
             Attribs.pOutputTextureView = pOutput->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET);
             Attribs.Sharpness          = 0.5f;
-            pUpscaler->Execute(Attribs);
+            EXPECT_TRUE(pUpscaler->Execute(Attribs));
             Upscalers.push_back(pUpscaler);
         }
     }
@@ -335,21 +336,26 @@ TEST(SuperResolutionTest, QuerySourceSettings)
         Attribs.Flags            = SUPER_RESOLUTION_FLAG_NONE;
 
         SuperResolutionSourceSettings Settings;
-        pFactory->GetSourceSettings(Attribs, Settings);
+        EXPECT_TRUE(pFactory->GetSourceSettings(Attribs, Settings)) << "Variant " << Variants[VariantIdx].Name;
 
         EXPECT_GT(Settings.OptimalInputWidth, 0u) << "Variant " << Variants[VariantIdx].Name;
         EXPECT_GT(Settings.OptimalInputHeight, 0u) << "Variant " << Variants[VariantIdx].Name;
         EXPECT_LE(Settings.OptimalInputWidth, 1920u) << "Variant " << Variants[VariantIdx].Name;
         EXPECT_LE(Settings.OptimalInputHeight, 1080u) << "Variant " << Variants[VariantIdx].Name;
+        EXPECT_LE(Settings.MinInputWidth, Settings.OptimalInputWidth) << "Variant " << Variants[VariantIdx].Name;
+        EXPECT_LE(Settings.MinInputHeight, Settings.OptimalInputHeight) << "Variant " << Variants[VariantIdx].Name;
+        EXPECT_GE(Settings.MaxInputWidth, Settings.OptimalInputWidth) << "Variant " << Variants[VariantIdx].Name;
+        EXPECT_GE(Settings.MaxInputHeight, Settings.OptimalInputHeight) << "Variant " << Variants[VariantIdx].Name;
     }
 
-    // Test all optimization types produce monotonically decreasing input resolution
-    // (enum is ordered from MAX_QUALITY=0 to MAX_PERFORMANCE)
+    // Every optimization type either returns its own settings or fails with zero settings; an unavailable
+    // type must not be silently replaced by another one. Available types produce monotonically decreasing
+    // input resolution (enum is ordered from MAX_QUALITY=0 to MAX_PERFORMANCE).
+    for (const SuperResolutionInfo& Variant : Variants)
     {
-        const auto& Variant = Variants[0];
-
         Uint32 PrevWidth = 0;
-        for (Uint8 OptimizationType = SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_QUALITY; OptimizationType < SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_PERFORMANCE; ++OptimizationType)
+        Uint32 Widths[SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT]{};
+        for (Uint8 OptimizationType = SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_QUALITY; OptimizationType < SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT; ++OptimizationType)
         {
             SuperResolutionSourceSettingsAttribs Attribs;
             Attribs.VariantId        = Variant.VariantId;
@@ -360,14 +366,74 @@ TEST(SuperResolutionTest, QuerySourceSettings)
             Attribs.Flags            = SUPER_RESOLUTION_FLAG_NONE;
 
             SuperResolutionSourceSettings Settings;
-            pFactory->GetSourceSettings(Attribs, Settings);
+            if (!pFactory->GetSourceSettings(Attribs, Settings))
+            {
+                EXPECT_EQ(Settings.OptimalInputWidth, 0u) << Variant.Name << " OptimizationType " << Uint32{OptimizationType};
+                EXPECT_EQ(Settings.OptimalInputHeight, 0u) << Variant.Name << " OptimizationType " << Uint32{OptimizationType};
+                continue;
+            }
 
-            // First iteration: just record. Subsequent: input should decrease or stay same.
+            EXPECT_GT(Settings.OptimalInputWidth, 0u) << Variant.Name << " OptimizationType " << Uint32{OptimizationType};
             if (PrevWidth > 0)
-                EXPECT_LE(Settings.OptimalInputWidth, PrevWidth) << "OptimizationType " << OptimizationType;
-            PrevWidth = Settings.OptimalInputWidth;
+                EXPECT_LE(Settings.OptimalInputWidth, PrevWidth) << Variant.Name << " OptimizationType " << Uint32{OptimizationType};
+            PrevWidth                = Settings.OptimalInputWidth;
+            Widths[OptimizationType] = Settings.OptimalInputWidth;
         }
+
+        // Before exact queries, an unavailable DLSS MAX_QUALITY (UltraQuality) returned the HIGH_QUALITY
+        // resolution. Other providers (e.g. DirectSR FSR 3.1) may legitimately report equal sizes.
+        const bool IsDLSS = strcmp(Variant.Name, "NGX: DLSS") == 0;
+        if (IsDLSS && Widths[SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_QUALITY] != 0 && Widths[SUPER_RESOLUTION_OPTIMIZATION_TYPE_HIGH_QUALITY] != 0)
+            EXPECT_GT(Widths[SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_QUALITY], Widths[SUPER_RESOLUTION_OPTIMIZATION_TYPE_HIGH_QUALITY]) << Variant.Name;
     }
+}
+
+TEST(SuperResolutionTest, QuerySourceSettingsRejectsInvalidAttribs)
+{
+    auto pFactory = GetFactory();
+    ASSERT_NE(pFactory, nullptr);
+
+    Uint32 NumVariants = 0;
+    pFactory->EnumerateVariants(NumVariants, nullptr);
+    if (NumVariants == 0)
+    {
+        GTEST_SKIP() << "No super resolution variants available on this device";
+    }
+
+    std::vector<SuperResolutionInfo> Variants(NumVariants);
+    pFactory->EnumerateVariants(NumVariants, Variants.data());
+
+    SuperResolutionSourceSettingsAttribs ValidAttribs;
+    ValidAttribs.VariantId        = Variants[0].VariantId;
+    ValidAttribs.OutputWidth      = 1920;
+    ValidAttribs.OutputHeight     = 1080;
+    ValidAttribs.OptimizationType = SUPER_RESOLUTION_OPTIMIZATION_TYPE_BALANCED;
+    ValidAttribs.OutputFormat     = TEX_FORMAT_RGBA16_FLOAT;
+
+    auto ExpectRejected = [&](const SuperResolutionSourceSettingsAttribs& Attribs, const char* Case) {
+        SuperResolutionSourceSettings Settings;
+        Settings.OptimalInputWidth = 1;
+        EXPECT_FALSE(pFactory->GetSourceSettings(Attribs, Settings)) << Case;
+        EXPECT_EQ(Settings.OptimalInputWidth, 0u) << Case;
+        EXPECT_EQ(Settings.OptimalInputHeight, 0u) << Case;
+        EXPECT_EQ(Settings.MaxInputWidth, 0u) << Case;
+    };
+
+    SuperResolutionSourceSettingsAttribs UnknownVariant = ValidAttribs;
+    UnknownVariant.VariantId                            = IID_Unknown;
+    ExpectRejected(UnknownVariant, "unknown variant");
+
+    SuperResolutionSourceSettingsAttribs ZeroWidth = ValidAttribs;
+    ZeroWidth.OutputWidth                          = 0;
+    ExpectRejected(ZeroWidth, "zero output width");
+
+    SuperResolutionSourceSettingsAttribs ZeroHeight = ValidAttribs;
+    ZeroHeight.OutputHeight                         = 0;
+    ExpectRejected(ZeroHeight, "zero output height");
+
+    SuperResolutionSourceSettingsAttribs InvalidType = ValidAttribs;
+    InvalidType.OptimizationType                     = SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT;
+    ExpectRejected(InvalidType, "invalid optimization type");
 }
 
 TEST(SuperResolutionTest, CreateTemporalUpscaler)
@@ -403,7 +469,7 @@ TEST(SuperResolutionTest, CreateTemporalUpscaler)
     QueryAttribs.Flags            = SUPER_RESOLUTION_FLAG_AUTO_EXPOSURE;
 
     SuperResolutionSourceSettings SourceSettings;
-    pFactory->GetSourceSettings(QueryAttribs, SourceSettings);
+    ASSERT_TRUE(pFactory->GetSourceSettings(QueryAttribs, SourceSettings));
     ASSERT_GT(SourceSettings.OptimalInputWidth, 0u);
     ASSERT_GT(SourceSettings.OptimalInputHeight, 0u);
 
@@ -478,7 +544,7 @@ TEST(SuperResolutionTest, ExecuteTemporalUpscaler)
     QueryAttribs.Flags            = SUPER_RESOLUTION_FLAG_AUTO_EXPOSURE;
 
     SuperResolutionSourceSettings SourceSettings{};
-    pFactory->GetSourceSettings(QueryAttribs, SourceSettings);
+    ASSERT_TRUE(pFactory->GetSourceSettings(QueryAttribs, SourceSettings));
     ASSERT_GT(SourceSettings.OptimalInputWidth, 0u);
     ASSERT_GT(SourceSettings.OptimalInputHeight, 0u);
 
@@ -578,13 +644,13 @@ TEST(SuperResolutionTest, ExecuteTemporalUpscaler)
 
     Attribs.TimeDeltaInSeconds = 0.016f;
     Attribs.ResetHistory       = true;
-    pUpscaler->Execute(Attribs);
+    EXPECT_TRUE(pUpscaler->Execute(Attribs));
 
     // Execute a second frame without reset
     Attribs.JitterX      = -0.25f;
     Attribs.JitterY      = 0.25f;
     Attribs.ResetHistory = False;
-    pUpscaler->Execute(Attribs);
+    EXPECT_TRUE(pUpscaler->Execute(Attribs));
 
     pContext->Flush();
     pContext->WaitForIdle();

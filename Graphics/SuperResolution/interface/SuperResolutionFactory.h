@@ -194,6 +194,18 @@ struct SuperResolutionSourceSettings
 
     /// Recommended input height for the given output resolution and optimization type.
     Uint32 OptimalInputHeight DEFAULT_INITIALIZER(0);
+
+    /// Minimum input width supported for the given output resolution and optimization type.
+    Uint32 MinInputWidth DEFAULT_INITIALIZER(0);
+
+    /// Minimum input height supported for the given output resolution and optimization type.
+    Uint32 MinInputHeight DEFAULT_INITIALIZER(0);
+
+    /// Maximum input width supported for the given output resolution and optimization type.
+    Uint32 MaxInputWidth DEFAULT_INITIALIZER(0);
+
+    /// Maximum input height supported for the given output resolution and optimization type.
+    Uint32 MaxInputHeight DEFAULT_INITIALIZER(0);
 };
 typedef struct SuperResolutionSourceSettings SuperResolutionSourceSettings;
 
@@ -291,10 +303,14 @@ DILIGENT_BEGIN_INTERFACE(ISuperResolutionFactory, IObject)
     /// \param [out] Settings - On success, receives the optimal source settings, 
     ///                         see Diligent::SuperResolutionSourceSettings for details.
     ///
-    /// \remarks    On backends that don't support hardware upscaling, Settings will be zero-initialized.
-    ///             Use this method to determine the optimal render resolution before creating
+    /// \return True if the variant provides settings for exactly the requested optimization type.
+    ///         False if the variant is not found, the attributes are invalid, or the requested
+    ///         optimization type is not available for this output; Settings is then zero-initialized.
+    ///         The optimization type is never substituted with another one.
+    ///
+    /// \remarks    Use this method to determine the optimal render resolution before creating
     ///             the upscaler object.
-    VIRTUAL void METHOD(GetSourceSettings)(THIS_
+    VIRTUAL Bool METHOD(GetSourceSettings)(THIS_
                                            const SuperResolutionSourceSettingsAttribs REF Attribs,
                                            SuperResolutionSourceSettings              REF Settings) CONST PURE;
 
