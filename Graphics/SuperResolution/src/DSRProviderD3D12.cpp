@@ -107,7 +107,7 @@ public:
 
     ~SuperResolutionD3D12_DSR();
 
-    virtual void DILIGENT_CALL_TYPE Execute(const ExecuteSuperResolutionAttribs& Attribs) override final;
+    virtual Bool DILIGENT_CALL_TYPE Execute(const ExecuteSuperResolutionAttribs& Attribs) override final;
 
 private:
     CComPtr<IDSRSuperResEngine>                                                      m_pDSREngine;
@@ -169,7 +169,7 @@ SuperResolutionD3D12_DSR::SuperResolutionD3D12_DSR(IReferenceCounters*        pR
 
 SuperResolutionD3D12_DSR::~SuperResolutionD3D12_DSR() = default;
 
-void DILIGENT_CALL_TYPE SuperResolutionD3D12_DSR::Execute(const ExecuteSuperResolutionAttribs& Attribs)
+Bool DILIGENT_CALL_TYPE SuperResolutionD3D12_DSR::Execute(const ExecuteSuperResolutionAttribs& Attribs)
 {
     ValidateExecuteSuperResolutionAttribs(m_Desc, m_Info, Attribs);
     DEV_CHECK_SUPER_RESOLUTION(m_Desc.Name, Attribs.CameraNear > 0, "CameraNear must be greater than zero for temporal upscaling");
@@ -192,7 +192,7 @@ void DILIGENT_CALL_TYPE SuperResolutionD3D12_DSR::Execute(const ExecuteSuperReso
     }
 
     if (!pDSRUpscaler)
-        return;
+        return False;
 
     auto GetD3D12Resource = [](ITextureView* pView) -> ID3D12Resource* {
         if (pView != nullptr)
@@ -237,10 +237,12 @@ void DILIGENT_CALL_TYPE SuperResolutionD3D12_DSR::Execute(const ExecuteSuperReso
     // DirectSR submits its own command list(s) to the command queue, so all rendering work must be submitted before DirectSR reads the inputs.
     pDeviceCtx->Flush();
 
-    if (HRESULT hr = pDSRUpscaler->Execute(&ExecuteParams, Attribs.TimeDeltaInSeconds, Flags); FAILED(hr))
+    const HRESULT hr = pDSRUpscaler->Execute(&ExecuteParams, Attribs.TimeDeltaInSeconds, Flags);
+    if (FAILED(hr))
         LOG_D3D_ERROR(hr, "DirectSR Execute failed.");
 
     pDeviceCtx->TransitionTextureState(Attribs.pOutputTextureView->GetTexture(), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+    return SUCCEEDED(hr) ? True : False;
 }
 
 class DSRProviderD3D12 final : public SuperResolutionProvider
@@ -289,13 +291,14 @@ public:
         }
     }
 
-    virtual void GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs,
+    virtual bool GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs,
                                    SuperResolutionSourceSettings&              Settings) override final
     {
         Settings = {};
 
         DEV_CHECK_ERR(m_pDSRDevice != nullptr, "DirectSR device must not be null");
-        ValidateSourceSettingsAttribs(Attribs);
+        if (!CheckSourceSettingsAttribs(Attribs))
+            return false;
 
         DSR_OPTIMIZATION_TYPE DSROptType = DSR_OPTIMIZATION_TYPE_BALANCED;
         switch (Attribs.OptimizationType)
@@ -328,7 +331,7 @@ public:
         if (VariantIndex == UINT32_MAX)
         {
             LOG_WARNING_MESSAGE("DirectSR variant not found for the specified VariantId");
-            return;
+            return false;
         }
 
         DSR_SIZE TargetSize = {Attribs.OutputWidth, Attribs.OutputHeight};
@@ -340,15 +343,22 @@ public:
             DSRCreateFlags |= DSR_SUPERRES_CREATE_ENGINE_FLAG_ENABLE_SHARPENING;
 
         DSR_SUPERRES_SOURCE_SETTINGS SourceSettings = {};
-        if (HRESULT hr = m_pDSRDevice->QuerySuperResSourceSettings(VariantIndex, TargetSize, TexFormatToDXGI_Format(Attribs.OutputFormat), DSROptType, DSRCreateFlags, &SourceSettings); SUCCEEDED(hr))
-        {
-            Settings.OptimalInputWidth  = SourceSettings.OptimalSize.Width;
-            Settings.OptimalInputHeight = SourceSettings.OptimalSize.Height;
-        }
-        else
+        if (HRESULT hr = m_pDSRDevice->QuerySuperResSourceSettings(VariantIndex, TargetSize, TexFormatToDXGI_Format(Attribs.OutputFormat), DSROptType, DSRCreateFlags, &SourceSettings); FAILED(hr))
         {
             LOG_D3D_WARNING(hr, "DirectSR QuerySuperResSourceSettings failed.");
+            return false;
         }
+
+        // Variants without dynamic resolution may leave the range empty; they accept the optimal size only.
+        const bool HasDynamicRange = SourceSettings.MaxDynamicSize.Width != 0 && SourceSettings.MaxDynamicSize.Height != 0;
+
+        Settings.OptimalInputWidth  = SourceSettings.OptimalSize.Width;
+        Settings.OptimalInputHeight = SourceSettings.OptimalSize.Height;
+        Settings.MinInputWidth      = HasDynamicRange ? SourceSettings.MinDynamicSize.Width : Settings.OptimalInputWidth;
+        Settings.MinInputHeight     = HasDynamicRange ? SourceSettings.MinDynamicSize.Height : Settings.OptimalInputHeight;
+        Settings.MaxInputWidth      = HasDynamicRange ? SourceSettings.MaxDynamicSize.Width : Settings.OptimalInputWidth;
+        Settings.MaxInputHeight     = HasDynamicRange ? SourceSettings.MaxDynamicSize.Height : Settings.OptimalInputHeight;
+        return true;
     }
 
     virtual void CreateSuperResolution(const SuperResolutionDesc& Desc,

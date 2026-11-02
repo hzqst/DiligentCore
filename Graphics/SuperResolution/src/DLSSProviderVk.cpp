@@ -68,14 +68,14 @@ public:
     {
     }
 
-    virtual void DILIGENT_CALL_TYPE Execute(const ExecuteSuperResolutionAttribs& Attribs) override final
+    virtual Bool DILIGENT_CALL_TYPE Execute(const ExecuteSuperResolutionAttribs& Attribs) override final
     {
         NGXLock Lock;
         ValidateExecuteSuperResolutionAttribs(m_Desc, m_Info, Attribs);
 
         NVSDK_NGX_Handle* pDLSSFeature = AcquireFeature(Attribs);
         if (pDLSSFeature == nullptr)
-            return;
+            return False;
 
         TransitionResourceStates(Attribs);
 
@@ -138,6 +138,7 @@ public:
         NVSDK_NGX_Result Result = NGX_VULKAN_EVALUATE_DLSS_EXT(vkCmdBuffer, pDLSSFeature, m_pNGXParams, &EvalParams);
         if (NVSDK_NGX_FAILED(Result))
             LOG_ERROR_MESSAGE("DLSS Vulkan evaluation failed. NGX Result: ", static_cast<Uint32>(Result));
+        return NVSDK_NGX_SUCCEED(Result) ? True : False;
     }
 };
 

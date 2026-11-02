@@ -44,12 +44,14 @@ public:
 
     virtual void EnumerateVariants(std::vector<SuperResolutionInfo>& Variants) = 0;
 
-    virtual void GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs,
+    /// Default settings for upscalers that accept any input resolution up to the output resolution.
+    virtual bool GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs,
                                    SuperResolutionSourceSettings&              Settings)
     {
         Settings = {};
 
-        ValidateSourceSettingsAttribs(Attribs);
+        if (!CheckSourceSettingsAttribs(Attribs))
+            return false;
 
         static constexpr float ScaleFactors[] = {
             24.f / 32.f, // MAX_QUALITY      (75%)
@@ -62,10 +64,15 @@ public:
         static_assert(_countof(ScaleFactors) == SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT,
                       "Scale factor table must match SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT");
 
-        const float ScaleFactor = Attribs.OptimizationType < SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT ? ScaleFactors[Attribs.OptimizationType] : ScaleFactors[SUPER_RESOLUTION_OPTIMIZATION_TYPE_BALANCED];
+        const float ScaleFactor = ScaleFactors[Attribs.OptimizationType];
 
         Settings.OptimalInputWidth  = std::max(1u, static_cast<Uint32>(Attribs.OutputWidth * ScaleFactor));
         Settings.OptimalInputHeight = std::max(1u, static_cast<Uint32>(Attribs.OutputHeight * ScaleFactor));
+        Settings.MinInputWidth      = 1;
+        Settings.MinInputHeight     = 1;
+        Settings.MaxInputWidth      = Attribs.OutputWidth;
+        Settings.MaxInputHeight     = Attribs.OutputHeight;
+        return true;
     }
 
     virtual void CreateSuperResolution(const SuperResolutionDesc& Desc,

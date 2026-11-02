@@ -51,8 +51,9 @@ namespace Diligent
         }                                                            \
     } while (false)
 
-/// Validates super resolution source settings attributes using DEV checks.
-void ValidateSourceSettingsAttribs(const SuperResolutionSourceSettingsAttribs& Attribs);
+/// Checks super resolution source settings attributes.
+/// Returns false and logs a warning if the output resolution or optimization type is invalid.
+bool CheckSourceSettingsAttribs(const SuperResolutionSourceSettingsAttribs& Attribs);
 
 /// Validates super resolution description and throws an exception in case of an error.
 void ValidateSuperResolutionDesc(const SuperResolutionDesc& Desc, const SuperResolutionInfo& Info) noexcept(false);

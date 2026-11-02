@@ -127,52 +127,48 @@ void DLSSProviderBase::EnumerateVariants(std::vector<SuperResolutionInfo>& Varia
     }
 }
 
-void DLSSProviderBase::GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs,
+bool DLSSProviderBase::GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs,
                                          SuperResolutionSourceSettings&              Settings)
 {
     Settings = {};
     NGXLock Lock;
     if (!m_pNGXParams)
-        return;
+        return false;
 
-    ValidateSourceSettingsAttribs(Attribs);
+    if (!CheckSourceSettingsAttribs(Attribs))
+        return false;
 
-    for (SUPER_RESOLUTION_OPTIMIZATION_TYPE OptType = Attribs.OptimizationType; OptType < SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT; OptType = static_cast<SUPER_RESOLUTION_OPTIMIZATION_TYPE>(OptType + 1))
+    Uint32 OptimalWidth  = 0;
+    Uint32 OptimalHeight = 0;
+    Uint32 MaxWidth      = 0;
+    Uint32 MaxHeight     = 0;
+    Uint32 MinWidth      = 0;
+    Uint32 MinHeight     = 0;
+    float  Sharpness     = 0.0f;
+
+    NVSDK_NGX_Result Result = NGX_DLSS_GET_OPTIMAL_SETTINGS(
+        m_pNGXParams,
+        Attribs.OutputWidth, Attribs.OutputHeight,
+        OptimizationTypeToNGXPerfQuality(Attribs.OptimizationType),
+        &OptimalWidth, &OptimalHeight,
+        &MaxWidth, &MaxHeight,
+        &MinWidth, &MinHeight,
+        &Sharpness);
+
+    if (NVSDK_NGX_FAILED(Result) || OptimalWidth == 0 || OptimalHeight == 0)
     {
-        NVSDK_NGX_PerfQuality_Value PerfQuality = OptimizationTypeToNGXPerfQuality(OptType);
-
-        Uint32 OptimalWidth  = 0;
-        Uint32 OptimalHeight = 0;
-        Uint32 MaxWidth      = 0;
-        Uint32 MaxHeight     = 0;
-        Uint32 MinWidth      = 0;
-        Uint32 MinHeight     = 0;
-        float  Sharpness     = 0.0f;
-
-        NVSDK_NGX_Result Result = NGX_DLSS_GET_OPTIMAL_SETTINGS(
-            m_pNGXParams,
-            Attribs.OutputWidth, Attribs.OutputHeight,
-            PerfQuality,
-            &OptimalWidth, &OptimalHeight,
-            &MaxWidth, &MaxHeight,
-            &MinWidth, &MinHeight,
-            &Sharpness);
-
-        if (NVSDK_NGX_SUCCEED(Result) && OptimalWidth > 0 && OptimalHeight > 0)
-        {
-            if (OptType != Attribs.OptimizationType)
-            {
-                LOG_WARNING_MESSAGE("DLSS quality mode '", GetOptimizationTypeName(Attribs.OptimizationType),
-                                    "' is not available. Falling back to '", GetOptimizationTypeName(OptType), "'.");
-            }
-            Settings.OptimalInputWidth  = OptimalWidth;
-            Settings.OptimalInputHeight = OptimalHeight;
-            return;
-        }
+        LOG_WARNING_MESSAGE("DLSS quality mode '", GetOptimizationTypeName(Attribs.OptimizationType), "' is not available for ",
+                            Attribs.OutputWidth, "x", Attribs.OutputHeight, " output resolution. NGX Result: ", static_cast<Uint32>(Result));
+        return false;
     }
 
-    LOG_WARNING_MESSAGE("Failed to get DLSS optimal settings: no quality mode is available for ",
-                        Attribs.OutputWidth, "x", Attribs.OutputHeight, " output resolution.");
+    Settings.OptimalInputWidth  = OptimalWidth;
+    Settings.OptimalInputHeight = OptimalHeight;
+    Settings.MinInputWidth      = MinWidth;
+    Settings.MinInputHeight     = MinHeight;
+    Settings.MaxInputWidth      = MaxWidth;
+    Settings.MaxInputHeight     = MaxHeight;
+    return true;
 }
 
 } // namespace Diligent

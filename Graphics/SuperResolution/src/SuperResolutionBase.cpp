@@ -58,12 +58,19 @@ void PopulateHaltonJitterPattern(std::vector<SuperResolutionBase::JitterOffset>&
     }
 }
 
-void ValidateSourceSettingsAttribs(const SuperResolutionSourceSettingsAttribs& Attribs)
+bool CheckSourceSettingsAttribs(const SuperResolutionSourceSettingsAttribs& Attribs)
 {
-#ifdef DILIGENT_DEVELOPMENT
-    DEV_CHECK_ERR(Attribs.OutputWidth > 0 && Attribs.OutputHeight > 0, "Output resolution must be greater than zero");
-    DEV_CHECK_ERR(Attribs.OptimizationType < SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT, "Invalid optimization type");
-#endif
+    if (Attribs.OutputWidth == 0 || Attribs.OutputHeight == 0)
+    {
+        LOG_WARNING_MESSAGE("Super resolution source settings: output resolution must be greater than zero");
+        return false;
+    }
+    if (Attribs.OptimizationType >= SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT)
+    {
+        LOG_WARNING_MESSAGE("Super resolution source settings: invalid optimization type ", static_cast<Uint32>(Attribs.OptimizationType));
+        return false;
+    }
+    return true;
 }
 
 void ValidateSuperResolutionDesc(const SuperResolutionDesc& Desc, const SuperResolutionInfo& Info) noexcept(false)

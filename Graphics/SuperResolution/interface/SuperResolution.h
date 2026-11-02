@@ -297,12 +297,16 @@ DILIGENT_BEGIN_INTERFACE(ISuperResolution, IObject)
 
     /// \param [in] Attribs - Upscale operation attributes, see Diligent::ExecuteSuperResolutionAttribs.
     ///
+    /// \return True if the backend accepted the command, and False if it failed to create its
+    ///         internal upscaler state or reported an error for this command. On failure, the output
+    ///         texture contents are undefined. True does not mean the GPU has completed the work.
+    ///
     /// The command must be called outside of a render pass.
     /// All input textures must be in the appropriate states or
     /// StateTransitionMode should be set to RESOURCE_STATE_TRANSITION_MODE_TRANSITION.
     ///
     /// \remarks Supported contexts: graphics.
-    VIRTUAL void METHOD(Execute)(THIS_
+    VIRTUAL Bool METHOD(Execute)(THIS_
                                  const ExecuteSuperResolutionAttribs REF Attribs) PURE;
 };
 DILIGENT_END_INTERFACE

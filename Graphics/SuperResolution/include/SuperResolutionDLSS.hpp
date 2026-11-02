@@ -57,8 +57,8 @@ public:
     /// Populates DLSS variant info using NGX capability parameters.
     virtual void EnumerateVariants(std::vector<SuperResolutionInfo>& Variants) override final;
 
-    /// Queries DLSS optimal source settings using NGX capability parameters.
-    virtual void GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs, SuperResolutionSourceSettings& Settings) override final;
+    /// Queries DLSS source settings for exactly the requested optimization type using NGX capability parameters.
+    virtual bool GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs, SuperResolutionSourceSettings& Settings) override final;
 
 protected:
     RefCntAutoPtr<IRenderDevice> m_pDevice;

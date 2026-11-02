@@ -113,7 +113,9 @@ input resolution relative to the output. Default scale factors used when the bac
 | `MAX_PERFORMANCE`         | 0.34         | 34%                             |
 
 Use `ISuperResolutionFactory::GetSourceSettings()` to query the exact optimal input resolution for a given
-backend, output resolution, and optimization type.
+backend, output resolution, and optimization type. It returns `false` and zero-initialized settings when the
+requested optimization type is not available; it never substitutes another optimization type. On success,
+`MinInputWidth`/`MinInputHeight` and `MaxInputWidth`/`MaxInputHeight` report the supported input range.
 
 ## Usage
 
@@ -189,7 +191,10 @@ SourceAttribs.Flags            = SUPER_RESOLUTION_FLAG_AUTO_EXPOSURE;
 SourceAttribs.OptimizationType = SUPER_RESOLUTION_OPTIMIZATION_TYPE_BALANCED;
 
 SuperResolutionSourceSettings SourceSettings;
-pSRFactory->GetSourceSettings(SourceAttribs, SourceSettings);
+if (!pSRFactory->GetSourceSettings(SourceAttribs, SourceSettings))
+{
+    // The optimization type is not available for this output resolution.
+}
 ```
 
 ### Creating the Upscaler
@@ -251,7 +256,11 @@ ExecAttribs.TimeDeltaInSeconds    = ElapsedTime;
 ExecAttribs.Sharpness             = Sharpness;
 ExecAttribs.ResetHistory          = ResetHistory;
 
-pSR->Execute(ExecAttribs);
+if (!pSR->Execute(ExecAttribs))
+{
+    // The backend failed to create its internal state or rejected the command;
+    // the output texture contents are undefined.
+}
 ```
 
 **`ResetHistory`** should be set to `True` when temporal history is no longer valid:
