@@ -78,6 +78,11 @@ The default DLSS preset is F (SDK 310.9.1). Default, D and E can be selected
 explicitly. Unsupported quality queries fail without silently changing quality.
 The object owns its device/runtime references and may outlive the factory.
 
+Each module has its own debug output. With the shared module, call
+`Factory->SetMessageCallback(Callback)` (and `SetBreakOnError` if needed) to route
+its messages to the application; messages logged while the factory was being
+created use the module's default output.
+
 ## Input contract
 
 - Color: noisy, pre-tone-mapped radiance. Supply diffuse/specular albedo separately.
@@ -132,7 +137,8 @@ destruction; destruction waits for submitted feature work before releasing NGX.
 ## Validation and future RTXPT integration
 
 `RayReconstructionTest.*` exercises factory lifetime, C interfaces, reconstruction,
-readback, native/upscaled resolution, packed/unpacked roughness and reset/recreation.
+readback, native/upscaled resolution, packed/unpacked roughness, reset/recreation
+and message routing from the shared module.
 Set `DILIGENT_TEST_RAY_RECONSTRUCTION=1` when running API tests with `--mode=vk`.
 Unavailable devices skip hardware tests; skips are not GPU validation evidence.
 

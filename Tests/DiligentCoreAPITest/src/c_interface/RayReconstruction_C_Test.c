@@ -10,5 +10,6 @@ int TestRayReconstructionCInterface(IRayReconstruction* RR, IRayReconstructionFa
     const RayReconstructionDesc* Desc = IRayReconstruction_GetDesc(RR);
     IRayReconstruction_GetJitterOffset(RR, 0, &X, &Y);
     IRayReconstructionFactory_EnumerateVariants(Factory, &Count, NULL);
+    IRayReconstructionFactory_SetBreakOnError(Factory, false);
     return Desc != NULL && Desc->OutputWidth != 0 && Count != 0 && X >= -0.5f && X <= 0.5f && Y >= -0.5f && Y <= 0.5f;
 }

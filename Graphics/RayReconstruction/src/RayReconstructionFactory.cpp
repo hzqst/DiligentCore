@@ -5,6 +5,7 @@
 #include "RayReconstructionProvider.hpp"
 #include "ObjectBase.hpp"
 #include "EngineMemory.h"
+#include "PlatformDebug.hpp"
 #include <algorithm>
 #include <stdexcept>
 namespace Diligent
@@ -63,6 +64,14 @@ public:
         {
             LOG_ERROR_MESSAGE(Error.what());
         }
+    }
+    void DILIGENT_CALL_TYPE SetMessageCallback(DebugMessageCallbackType MessageCallback) const override
+    {
+        SetDebugMessageCallback(MessageCallback);
+    }
+    void DILIGENT_CALL_TYPE SetBreakOnError(bool BreakOnError) const override
+    {
+        PlatformDebug::SetBreakOnError(BreakOnError);
     }
 
 private:

@@ -6,6 +6,8 @@
 #include "gtest/gtest.h"
 #include "BasicMath.hpp"
 #include "LoadEngineDll.h"
+#include <atomic>
+#include <cstring>
 #include <vector>
 #if SUPER_RESOLUTION_SUPPORTED
 #    include "SuperResolutionFactoryLoader.h"
@@ -385,4 +387,53 @@ TEST(RayReconstructionTest, EvaluateAndReadback)
         LoadAndCreateRayReconstructionFactory(Device, &Factory);
         ASSERT_NE(nullptr, Factory);
     }
+}
+
+namespace
+{
+constexpr char      kInvalidExecuteMessage[] = "Invalid ray reconstruction execution attributes";
+std::atomic<Uint32> SharedModuleExecuteErrors{0};
+
+void DILIGENT_CALL_TYPE CountSharedModuleExecuteErrors(DEBUG_MESSAGE_SEVERITY Severity, const Char* Message, const Char*, const Char*, int)
+{
+    if (Severity == DEBUG_MESSAGE_SEVERITY_ERROR && Message != nullptr && std::strstr(Message, kInvalidExecuteMessage) != nullptr)
+        ++SharedModuleExecuteErrors;
+}
+} // namespace
+
+// Every module has its own debug output: the shared module reports to the
+// application only through the callback set on its factory.
+TEST(RayReconstructionTest, SharedFactoryMessageCallback)
+{
+    auto CreateShared = reinterpret_cast<CreateRayReconstructionFactoryType>(LoadEngineDll("RayReconstruction", "CreateRayReconstructionFactory"));
+    ASSERT_NE(nullptr, CreateShared);
+    auto*                                    Device = GPUTestingEnvironment::GetInstance()->GetDevice();
+    RefCntAutoPtr<IRayReconstructionFactory> Factory;
+    CreateShared(Device, &Factory);
+    ASSERT_NE(nullptr, Factory);
+    Uint32 Count = 0;
+    Factory->EnumerateVariants(Count, nullptr);
+    if (!Count)
+        GTEST_SKIP() << "NGX Ray Reconstruction unavailable";
+    RayReconstructionSourceSettingsAttribs Query;
+    Query.OutputWidth  = 640;
+    Query.OutputHeight = 360;
+    RayReconstructionSourceSettings Settings;
+    ASSERT_TRUE(Factory->GetSourceSettings(Query, Settings));
+    RayReconstructionDesc Desc;
+    Desc.InputWidth   = Settings.OptimalInputWidth;
+    Desc.InputHeight  = Settings.OptimalInputHeight;
+    Desc.OutputWidth  = Query.OutputWidth;
+    Desc.OutputHeight = Query.OutputHeight;
+    RefCntAutoPtr<IRayReconstruction> RR;
+    Factory->CreateRayReconstruction(Desc, &RR);
+    ASSERT_NE(nullptr, RR);
+
+    Factory->SetBreakOnError(false);
+    Factory->SetMessageCallback(CountSharedModuleExecuteErrors);
+    SharedModuleExecuteErrors = 0;
+    EXPECT_FALSE(RR->Execute(ExecuteRayReconstructionAttribs{}));
+    EXPECT_EQ(1u, SharedModuleExecuteErrors.load());
+    // Later shared-module errors go to the testing environment, which fails unexpected ones.
+    Factory->SetMessageCallback(DebugMessageCallback);
 }
