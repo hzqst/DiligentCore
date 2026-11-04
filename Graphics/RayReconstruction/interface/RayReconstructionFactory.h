@@ -4,6 +4,7 @@
 #pragma once
 #include "RayReconstruction.h"
 #include "../../GraphicsEngine/interface/RenderDevice.h"
+#include "../../../Primitives/interface/DebugOutput.h"
 
 DILIGENT_BEGIN_NAMESPACE(Diligent)
 static DILIGENT_CONSTEXPR INTERFACE_ID IID_RayReconstructionFactory =
@@ -50,6 +51,12 @@ DILIGENT_BEGIN_INTERFACE(IRayReconstructionFactory, IObject)
     /// Returns null on failure. The created object may outlive its factory.
     VIRTUAL void METHOD(CreateRayReconstruction)(THIS_ const RayReconstructionDesc REF Desc,
                                                IRayReconstruction** ppReconstruction) PURE;
+    /// Sets the debug message callback of the module that implements the factory. A shared
+    /// module otherwise reports through its default output; messages logged while the
+    /// factory was being created are not replayed.
+    VIRTUAL void METHOD(SetMessageCallback)(THIS_ DebugMessageCallbackType MessageCallback) CONST PURE;
+    /// Sets whether the module that implements the factory breaks on assertion failure.
+    VIRTUAL void METHOD(SetBreakOnError)(THIS_ bool BreakOnError) CONST PURE;
 };
 DILIGENT_END_INTERFACE
 #include "../../../Primitives/interface/UndefInterfaceHelperMacros.h"
@@ -57,6 +64,8 @@ DILIGENT_END_INTERFACE
 #    define IRayReconstructionFactory_EnumerateVariants(This, ...) CALL_IFACE_METHOD(RayReconstructionFactory, EnumerateVariants, This, __VA_ARGS__)
 #    define IRayReconstructionFactory_GetSourceSettings(This, ...) CALL_IFACE_METHOD(RayReconstructionFactory, GetSourceSettings, This, __VA_ARGS__)
 #    define IRayReconstructionFactory_CreateRayReconstruction(This, ...) CALL_IFACE_METHOD(RayReconstructionFactory, CreateRayReconstruction, This, __VA_ARGS__)
+#    define IRayReconstructionFactory_SetMessageCallback(This, ...) CALL_IFACE_METHOD(RayReconstructionFactory, SetMessageCallback, This, __VA_ARGS__)
+#    define IRayReconstructionFactory_SetBreakOnError(This, ...) CALL_IFACE_METHOD(RayReconstructionFactory, SetBreakOnError, This, __VA_ARGS__)
 #endif
 // clang-format on
 DILIGENT_END_NAMESPACE
