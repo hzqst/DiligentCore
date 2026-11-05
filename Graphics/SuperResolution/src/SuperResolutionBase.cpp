@@ -81,6 +81,20 @@ void ValidateSuperResolutionDesc(const SuperResolutionDesc& Desc, const SuperRes
     VERIFY_SUPER_RESOLUTION(Desc.Name, Desc.InputWidth > 0 && Desc.InputHeight > 0, "InputWidth and InputHeight must be greater than zero");
     VERIFY_SUPER_RESOLUTION(Desc.Name, Desc.InputWidth <= Desc.OutputWidth && Desc.InputHeight <= Desc.OutputHeight,
                             "Input resolution must not exceed output resolution");
+    VERIFY_SUPER_RESOLUTION(Desc.Name, Desc.OptimizationType < SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT,
+                            "Invalid optimization type ", static_cast<Uint32>(Desc.OptimizationType));
+
+    if (Desc.OptimizationType == SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE)
+    {
+        const bool NativeResolutionSupported = Info.Type == SUPER_RESOLUTION_TYPE_TEMPORAL &&
+            (Info.TemporalCapFlags & SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_NATIVE_RESOLUTION) != 0;
+
+        VERIFY_SUPER_RESOLUTION(Desc.Name, NativeResolutionSupported,
+                                "SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE is requested, but the '", Info.Name,
+                                "' variant does not support native resolution. Check the variant's capability flags.");
+        VERIFY_SUPER_RESOLUTION(Desc.Name, Desc.InputWidth == Desc.OutputWidth && Desc.InputHeight == Desc.OutputHeight,
+                                "Input resolution must equal output resolution for SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE");
+    }
 
     if (Desc.Flags & SUPER_RESOLUTION_FLAG_ENABLE_SHARPENING)
     {

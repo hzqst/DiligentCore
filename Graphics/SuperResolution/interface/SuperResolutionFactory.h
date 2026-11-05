@@ -127,7 +127,14 @@ DILIGENT_TYPED_ENUM(SUPER_RESOLUTION_TEMPORAL_CAP_FLAGS, Uint32)
     /// When set, the Sharpness field in ExecuteSuperResolutionAttribs is used.
     SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_SHARPNESS = 1u << 4,
 
-    SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_LAST = SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_SHARPNESS
+    /// The upscaler supports SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE, i.e. temporal anti-aliasing
+    /// with the input resolution equal to the output resolution (e.g. NVIDIA DLAA).
+    /// Unlike SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_NATIVE, this flag describes the optimization types
+    /// the upscaler accepts, not how it is implemented. ISuperResolutionFactory::GetSourceSettings()
+    /// still reports whether the type is available for a particular output.
+    SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_NATIVE_RESOLUTION = 1u << 5,
+
+    SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_LAST = SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_NATIVE_RESOLUTION
 };
 DEFINE_FLAG_ENUM_OPERATORS(SUPER_RESOLUTION_TEMPORAL_CAP_FLAGS)
 
@@ -210,29 +217,6 @@ struct SuperResolutionSourceSettings
 typedef struct SuperResolutionSourceSettings SuperResolutionSourceSettings;
 
 
-/// Super resolution optimization type.
-/// Defines the quality/performance trade-off for super resolution upscaling.
-DILIGENT_TYPED_ENUM(SUPER_RESOLUTION_OPTIMIZATION_TYPE, Uint8)
-{
-    /// Maximum quality, lowest performance.
-    SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_QUALITY = 0u,
-
-    /// Favor quality over performance.
-    SUPER_RESOLUTION_OPTIMIZATION_TYPE_HIGH_QUALITY,
-
-    /// Balanced quality/performance trade-off.
-    SUPER_RESOLUTION_OPTIMIZATION_TYPE_BALANCED,
-
-    /// Favor performance over quality.
-    SUPER_RESOLUTION_OPTIMIZATION_TYPE_HIGH_PERFORMANCE,
-
-    /// Maximum performance, lowest quality.
-    SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_PERFORMANCE,
-
-    SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT
-};
-
-
 /// Attributes for querying the optimal source (input) settings for super resolution upscaling.
 ///
 /// This structure is used by ISuperResolutionFactory::GetSourceSettings().
@@ -265,6 +249,22 @@ struct SuperResolutionSourceSettingsAttribs
     SUPER_RESOLUTION_OPTIMIZATION_TYPE OptimizationType DEFAULT_INITIALIZER(SUPER_RESOLUTION_OPTIMIZATION_TYPE_BALANCED);
 };
 typedef struct SuperResolutionSourceSettingsAttribs SuperResolutionSourceSettingsAttribs;
+
+
+/// Result of ISuperResolutionFactory::GetSourceSettings().
+DILIGENT_TYPED_ENUM(SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS, Uint8)
+{
+    /// The variant provides settings for exactly the requested optimization type.
+    SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_SUCCESS = 0u,
+
+    /// The attributes are valid, but the variant does not provide the requested optimization type
+    /// for this output resolution, format and flags (e.g. DLSS Ultra Quality on some GPUs,
+    /// or SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE on a variant without native resolution support).
+    SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_UNSUPPORTED,
+
+    /// The variant is not found, the attributes are invalid, or the backend query failed.
+    SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_ERROR
+};
 
 
 #define DILIGENT_INTERFACE_NAME ISuperResolutionFactory
@@ -300,19 +300,19 @@ DILIGENT_BEGIN_INTERFACE(ISuperResolutionFactory, IObject)
     /// Returns the optimal source (input) settings for super resolution upscaling.
 
     /// \param [in]  Attribs  - Attributes, see Diligent::SuperResolutionSourceSettingsAttribs for details.
-    /// \param [out] Settings - On success, receives the optimal source settings, 
+    /// \param [out] Settings - On success, receives the optimal source settings,
     ///                         see Diligent::SuperResolutionSourceSettings for details.
     ///
-    /// \return True if the variant provides settings for exactly the requested optimization type.
-    ///         False if the variant is not found, the attributes are invalid, or the requested
-    ///         optimization type is not available for this output; Settings is then zero-initialized.
+    /// \return SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_SUCCESS if the variant provides settings for exactly
+    ///         the requested optimization type. Otherwise SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_UNSUPPORTED or
+    ///         SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_ERROR, and Settings is zero-initialized.
     ///         The optimization type is never substituted with another one.
     ///
     /// \remarks    Use this method to determine the optimal render resolution before creating
-    ///             the upscaler object.
-    VIRTUAL Bool METHOD(GetSourceSettings)(THIS_
-                                           const SuperResolutionSourceSettingsAttribs REF Attribs,
-                                           SuperResolutionSourceSettings              REF Settings) CONST PURE;
+    ///             the upscaler object, and pass the same optimization type in SuperResolutionDesc::OptimizationType.
+    VIRTUAL SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS METHOD(GetSourceSettings)(THIS_
+                                                                              const SuperResolutionSourceSettingsAttribs REF Attribs,
+                                                                              SuperResolutionSourceSettings              REF Settings) CONST PURE;
 
 
     /// Creates a new upscaler object.

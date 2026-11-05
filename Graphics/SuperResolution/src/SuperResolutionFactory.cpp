@@ -136,23 +136,21 @@ public:
         }
     }
 
-    virtual Bool DILIGENT_CALL_TYPE GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs,
-                                                      SuperResolutionSourceSettings&              Settings) const override final
+    virtual SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS DILIGENT_CALL_TYPE GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs,
+                                                                                         SuperResolutionSourceSettings&              Settings) const override final
     {
         Settings                   = {};
         const auto [pEntry, pInfo] = FindProvider(Attribs.VariantId);
         if (pEntry == nullptr)
         {
             LOG_WARNING_MESSAGE("Super resolution variant not found for the specified VariantId");
-            return False;
+            return SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_ERROR;
         }
 
-        if (!pEntry->Provider->GetSourceSettings(Attribs, Settings))
-        {
+        const SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS Status = pEntry->Provider->GetSourceSettings(Attribs, Settings);
+        if (Status != SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_SUCCESS)
             Settings = {};
-            return False;
-        }
-        return True;
+        return Status;
     }
 
     virtual void DILIGENT_CALL_TYPE CreateSuperResolution(const SuperResolutionDesc& Desc, ISuperResolution** ppUpscaler) override final

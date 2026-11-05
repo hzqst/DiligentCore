@@ -111,11 +111,28 @@ input resolution relative to the output. Default scale factors used when the bac
 | `BALANCED`                | 0.56         | 56%                             |
 | `HIGH_PERFORMANCE`        | 0.50         | 50%                             |
 | `MAX_PERFORMANCE`         | 0.34         | 34%                             |
+| `NATIVE`                  | 1.00         | 100% (see below)                |
 
 Use `ISuperResolutionFactory::GetSourceSettings()` to query the exact optimal input resolution for a given
-backend, output resolution, and optimization type. It returns `false` and zero-initialized settings when the
-requested optimization type is not available; it never substitutes another optimization type. On success,
-`MinInputWidth`/`MinInputHeight` and `MaxInputWidth`/`MaxInputHeight` report the supported input range.
+backend, output resolution, and optimization type. It returns a `SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS`:
+
+| Status        | Meaning                                                                                              |
+|---------------|------------------------------------------------------------------------------------------------------|
+| `SUCCESS`     | The variant provides settings for exactly the requested optimization type.                           |
+| `UNSUPPORTED` | The attributes are valid, but the variant does not provide the type for this output, format and flags. |
+| `ERROR`       | The variant is not found, the attributes are invalid, or the backend query failed.                   |
+
+Unless the status is `SUCCESS`, the settings are zero-initialized; the requested optimization type is never
+substituted with another one. On success, `MinInputWidth`/`MinInputHeight` and `MaxInputWidth`/`MaxInputHeight`
+report the supported input range. Pass the queried optimization type in `SuperResolutionDesc::OptimizationType`
+when creating the upscaler: backends that select a quality mode when they create their feature (DLSS) use it.
+
+`SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE` is temporal anti-aliasing at the output resolution (NVIDIA DLAA):
+the input, minimum and maximum resolutions all equal the output resolution. It is appended after the other
+types, so it does not follow their decreasing-resolution order. Only variants that report
+`SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_NATIVE_RESOLUTION` accept it (currently DLSS); DirectSR and FSR return
+`UNSUPPORTED`. Do not confuse it with `SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_NATIVE`, which only means that the
+variant is a native backend rather than a software fallback.
 
 ## Usage
 
@@ -191,15 +208,16 @@ SourceAttribs.Flags            = SUPER_RESOLUTION_FLAG_AUTO_EXPOSURE;
 SourceAttribs.OptimizationType = SUPER_RESOLUTION_OPTIMIZATION_TYPE_BALANCED;
 
 SuperResolutionSourceSettings SourceSettings;
-if (!pSRFactory->GetSourceSettings(SourceAttribs, SourceSettings))
+if (pSRFactory->GetSourceSettings(SourceAttribs, SourceSettings) != SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_SUCCESS)
 {
-    // The optimization type is not available for this output resolution.
+    // UNSUPPORTED: the optimization type is not available for this output resolution.
+    // ERROR: the variant or the attributes are invalid, or the backend query failed.
 }
 ```
 
 ### Creating the Upscaler
 
-The upscaler must be recreated when the variant, input resolution, or output resolution changes:
+The upscaler must be recreated when the variant, optimization type, input resolution, or output resolution changes:
 
 ```cpp
 SuperResolutionDesc SRDesc;
@@ -209,6 +227,7 @@ SRDesc.InputHeight  = SourceSettings.OptimalInputHeight;
 SRDesc.OutputWidth  = SCDesc.Width;
 SRDesc.OutputHeight = SCDesc.Height;
 SRDesc.Flags        = SUPER_RESOLUTION_FLAG_AUTO_EXPOSURE;
+SRDesc.OptimizationType = SourceAttribs.OptimizationType;
 
 if (SupportsSharpness)
     SRDesc.Flags = SRDesc.Flags | SUPER_RESOLUTION_FLAG_ENABLE_SHARPENING;

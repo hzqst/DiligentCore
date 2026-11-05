@@ -291,14 +291,18 @@ public:
         }
     }
 
-    virtual bool GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs,
-                                   SuperResolutionSourceSettings&              Settings) override final
+    virtual SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs,
+                                                                      SuperResolutionSourceSettings&              Settings) override final
     {
         Settings = {};
 
         DEV_CHECK_ERR(m_pDSRDevice != nullptr, "DirectSR device must not be null");
         if (!CheckSourceSettingsAttribs(Attribs))
-            return false;
+            return SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_ERROR;
+
+        // DirectSR has no native resolution optimization type.
+        if (Attribs.OptimizationType == SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE)
+            return SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_UNSUPPORTED;
 
         DSR_OPTIMIZATION_TYPE DSROptType = DSR_OPTIMIZATION_TYPE_BALANCED;
         switch (Attribs.OptimizationType)
@@ -331,7 +335,7 @@ public:
         if (VariantIndex == UINT32_MAX)
         {
             LOG_WARNING_MESSAGE("DirectSR variant not found for the specified VariantId");
-            return false;
+            return SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_ERROR;
         }
 
         DSR_SIZE TargetSize = {Attribs.OutputWidth, Attribs.OutputHeight};
@@ -346,7 +350,7 @@ public:
         if (HRESULT hr = m_pDSRDevice->QuerySuperResSourceSettings(VariantIndex, TargetSize, TexFormatToDXGI_Format(Attribs.OutputFormat), DSROptType, DSRCreateFlags, &SourceSettings); FAILED(hr))
         {
             LOG_D3D_WARNING(hr, "DirectSR QuerySuperResSourceSettings failed.");
-            return false;
+            return SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_ERROR;
         }
 
         // Variants without dynamic resolution may leave the range empty; they accept the optimal size only.
@@ -358,7 +362,7 @@ public:
         Settings.MinInputHeight     = HasDynamicRange ? SourceSettings.MinDynamicSize.Height : Settings.OptimalInputHeight;
         Settings.MaxInputWidth      = HasDynamicRange ? SourceSettings.MaxDynamicSize.Width : Settings.OptimalInputWidth;
         Settings.MaxInputHeight     = HasDynamicRange ? SourceSettings.MaxDynamicSize.Height : Settings.OptimalInputHeight;
-        return true;
+        return SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_SUCCESS;
     }
 
     virtual void CreateSuperResolution(const SuperResolutionDesc& Desc,

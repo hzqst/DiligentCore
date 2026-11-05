@@ -38,7 +38,7 @@ namespace Diligent
 
 static const Char* GetOptimizationTypeName(SUPER_RESOLUTION_OPTIMIZATION_TYPE Type)
 {
-    static_assert(SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT == 5, "Please update the switch below to handle the new optimization type");
+    static_assert(SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT == 6, "Please update the switch below to handle the new optimization type");
     switch (Type)
     {
         // clang-format off
@@ -47,6 +47,7 @@ static const Char* GetOptimizationTypeName(SUPER_RESOLUTION_OPTIMIZATION_TYPE Ty
         case SUPER_RESOLUTION_OPTIMIZATION_TYPE_BALANCED:         return "Balanced";
         case SUPER_RESOLUTION_OPTIMIZATION_TYPE_HIGH_PERFORMANCE: return "High Performance";
         case SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_PERFORMANCE:  return "Max Performance";
+        case SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE:           return "Native (DLAA)";
             // clang-format on
         default:
             UNEXPECTED("Unexpected optimization type");
@@ -56,6 +57,7 @@ static const Char* GetOptimizationTypeName(SUPER_RESOLUTION_OPTIMIZATION_TYPE Ty
 
 NVSDK_NGX_PerfQuality_Value OptimizationTypeToNGXPerfQuality(SUPER_RESOLUTION_OPTIMIZATION_TYPE Type)
 {
+    static_assert(SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT == 6, "Please update the switch below to handle the new optimization type");
     switch (Type)
     {
         // clang-format off
@@ -64,6 +66,7 @@ NVSDK_NGX_PerfQuality_Value OptimizationTypeToNGXPerfQuality(SUPER_RESOLUTION_OP
         case SUPER_RESOLUTION_OPTIMIZATION_TYPE_BALANCED:         return NVSDK_NGX_PerfQuality_Value_Balanced;
         case SUPER_RESOLUTION_OPTIMIZATION_TYPE_HIGH_PERFORMANCE: return NVSDK_NGX_PerfQuality_Value_MaxPerf;
         case SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_PERFORMANCE:  return NVSDK_NGX_PerfQuality_Value_UltraPerformance;
+        case SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE:           return NVSDK_NGX_PerfQuality_Value_DLAA;
         default:                                                  return NVSDK_NGX_PerfQuality_Value_Balanced;
             // clang-format on
     }
@@ -113,7 +116,8 @@ void DLSSProviderBase::EnumerateVariants(std::vector<SuperResolutionInfo>& Varia
             SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_EXPOSURE_SCALE_TEXTURE |
             SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_IGNORE_HISTORY_MASK |
             SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_REACTIVE_MASK |
-            SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_SHARPNESS;
+            SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_SHARPNESS |
+            SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_NATIVE_RESOLUTION;
 
         snprintf(Info.Name, sizeof(Info.Name), "NGX: DLSS");
         Info.VariantId = VariantId_DLSS;
@@ -127,16 +131,16 @@ void DLSSProviderBase::EnumerateVariants(std::vector<SuperResolutionInfo>& Varia
     }
 }
 
-bool DLSSProviderBase::GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs,
-                                         SuperResolutionSourceSettings&              Settings)
+SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS DLSSProviderBase::GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs,
+                                                                            SuperResolutionSourceSettings&              Settings)
 {
     Settings = {};
     NGXLock Lock;
     if (!m_pNGXParams)
-        return false;
+        return SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_ERROR;
 
     if (!CheckSourceSettingsAttribs(Attribs))
-        return false;
+        return SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_ERROR;
 
     Uint32 OptimalWidth  = 0;
     Uint32 OptimalHeight = 0;
@@ -155,11 +159,38 @@ bool DLSSProviderBase::GetSourceSettings(const SuperResolutionSourceSettingsAttr
         &MinWidth, &MinHeight,
         &Sharpness);
 
-    if (NVSDK_NGX_FAILED(Result) || OptimalWidth == 0 || OptimalHeight == 0)
+    if (NVSDK_NGX_FAILED(Result))
+    {
+        // NGX rejects configurations it does not support with these results; any other failure is an error.
+        const bool Unsupported = Result == NVSDK_NGX_Result_FAIL_FeatureNotSupported || Result == NVSDK_NGX_Result_FAIL_UnsupportedParameter;
+        LOG_WARNING_MESSAGE("DLSS optimal settings query for quality mode '", GetOptimizationTypeName(Attribs.OptimizationType), "' at ",
+                            Attribs.OutputWidth, "x", Attribs.OutputHeight, " output resolution failed. NGX Result: ", static_cast<Uint32>(Result));
+        return Unsupported ? SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_UNSUPPORTED : SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_ERROR;
+    }
+
+    // NGX reports a quality mode that is unavailable for the output resolution with a zero optimal size.
+    if (OptimalWidth == 0 || OptimalHeight == 0)
     {
         LOG_WARNING_MESSAGE("DLSS quality mode '", GetOptimizationTypeName(Attribs.OptimizationType), "' is not available for ",
-                            Attribs.OutputWidth, "x", Attribs.OutputHeight, " output resolution. NGX Result: ", static_cast<Uint32>(Result));
-        return false;
+                            Attribs.OutputWidth, "x", Attribs.OutputHeight, " output resolution.");
+        return SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_UNSUPPORTED;
+    }
+
+    if (Attribs.OptimizationType == SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE)
+    {
+        // DLAA renders at the output resolution. A runtime that reports another size does not provide it.
+        if (OptimalWidth != Attribs.OutputWidth || OptimalHeight != Attribs.OutputHeight)
+        {
+            LOG_WARNING_MESSAGE("DLSS quality mode '", GetOptimizationTypeName(Attribs.OptimizationType), "' reported ", OptimalWidth, "x", OptimalHeight,
+                                " input resolution for ", Attribs.OutputWidth, "x", Attribs.OutputHeight, " output resolution instead of the output resolution.");
+            return SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_UNSUPPORTED;
+        }
+
+        // The upscaler accepts only the output resolution as input for this type.
+        MinWidth  = OptimalWidth;
+        MaxWidth  = OptimalWidth;
+        MinHeight = OptimalHeight;
+        MaxHeight = OptimalHeight;
     }
 
     Settings.OptimalInputWidth  = OptimalWidth;
@@ -168,7 +199,7 @@ bool DLSSProviderBase::GetSourceSettings(const SuperResolutionSourceSettingsAttr
     Settings.MinInputHeight     = MinHeight;
     Settings.MaxInputWidth      = MaxWidth;
     Settings.MaxInputHeight     = MaxHeight;
-    return true;
+    return SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_SUCCESS;
 }
 
 } // namespace Diligent
