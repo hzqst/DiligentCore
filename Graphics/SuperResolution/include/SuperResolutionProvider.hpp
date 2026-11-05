@@ -45,13 +45,17 @@ public:
     virtual void EnumerateVariants(std::vector<SuperResolutionInfo>& Variants) = 0;
 
     /// Default settings for upscalers that accept any input resolution up to the output resolution.
-    virtual bool GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs,
-                                   SuperResolutionSourceSettings&              Settings)
+    /// Such upscalers have no native resolution mode, so SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE is unsupported.
+    virtual SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs,
+                                                                      SuperResolutionSourceSettings&              Settings)
     {
         Settings = {};
 
         if (!CheckSourceSettingsAttribs(Attribs))
-            return false;
+            return SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_ERROR;
+
+        if (Attribs.OptimizationType == SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE)
+            return SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_UNSUPPORTED;
 
         static constexpr float ScaleFactors[] = {
             24.f / 32.f, // MAX_QUALITY      (75%)
@@ -61,8 +65,8 @@ public:
             11.f / 32.f, // MAX_PERFORMANCE  (34%)
         };
 
-        static_assert(_countof(ScaleFactors) == SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT,
-                      "Scale factor table must match SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT");
+        static_assert(_countof(ScaleFactors) == SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE,
+                      "Scale factor table must cover every optimization type before SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE");
 
         const float ScaleFactor = ScaleFactors[Attribs.OptimizationType];
 
@@ -72,7 +76,7 @@ public:
         Settings.MinInputHeight     = 1;
         Settings.MaxInputWidth      = Attribs.OutputWidth;
         Settings.MaxInputHeight     = Attribs.OutputHeight;
-        return true;
+        return SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_SUCCESS;
     }
 
     virtual void CreateSuperResolution(const SuperResolutionDesc& Desc,

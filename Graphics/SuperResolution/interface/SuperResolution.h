@@ -60,6 +60,39 @@ DILIGENT_TYPED_ENUM(SUPER_RESOLUTION_FLAGS, Uint32)
 DEFINE_FLAG_ENUM_OPERATORS(SUPER_RESOLUTION_FLAGS)
 
 
+/// Super resolution optimization type.
+/// Defines the quality/performance trade-off for super resolution upscaling.
+///
+/// The types from SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_QUALITY to SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_PERFORMANCE
+/// are ordered by decreasing input resolution. SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE is appended after them
+/// so that the values of the existing types do not change.
+DILIGENT_TYPED_ENUM(SUPER_RESOLUTION_OPTIMIZATION_TYPE, Uint8)
+{
+    /// Maximum quality, lowest performance.
+    SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_QUALITY = 0u,
+
+    /// Favor quality over performance.
+    SUPER_RESOLUTION_OPTIMIZATION_TYPE_HIGH_QUALITY,
+
+    /// Balanced quality/performance trade-off.
+    SUPER_RESOLUTION_OPTIMIZATION_TYPE_BALANCED,
+
+    /// Favor performance over quality.
+    SUPER_RESOLUTION_OPTIMIZATION_TYPE_HIGH_PERFORMANCE,
+
+    /// Maximum performance, lowest quality.
+    SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_PERFORMANCE,
+
+    /// Native resolution temporal anti-aliasing (e.g. NVIDIA DLAA): the input resolution equals the output resolution.
+    ///
+    /// Only variants that report SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_NATIVE_RESOLUTION accept this type.
+    /// It is never substituted with another optimization type.
+    SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE,
+
+    SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT
+};
+
+
 /// This structure describes the super resolution upscaler object and is part of the creation
 /// parameters given to ISuperResolutionFactory::CreateSuperResolution().
 struct SuperResolutionDesc
@@ -73,12 +106,14 @@ struct SuperResolutionDesc
     INTERFACE_ID VariantId DEFAULT_INITIALIZER({});
 
     /// Input (render) width. Must be greater than zero and not exceed OutputWidth.
+    /// Must equal OutputWidth for SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE.
     ///
     /// Use ISuperResolutionFactory::GetSourceSettings() to obtain the
     /// optimal input resolution for a given output resolution and optimization type.
     Uint32 InputWidth             DEFAULT_INITIALIZER(0);
 
-    /// Input (render) height. Must be greater than zero and not exceed OutputHeight
+    /// Input (render) height. Must be greater than zero and not exceed OutputHeight.
+    /// Must equal OutputHeight for SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE.
     ///
     /// Use ISuperResolutionFactory::GetSourceSettings() to obtain the
     /// optimal input resolution for a given output resolution and optimization type.
@@ -119,6 +154,13 @@ struct SuperResolutionDesc
     /// Engine creation flags controlling the super resolution upscaler behavior.
     /// See SUPER_RESOLUTION_FLAGS.
     SUPER_RESOLUTION_FLAGS Flags DEFAULT_INITIALIZER(SUPER_RESOLUTION_FLAG_NONE);
+
+    /// Optimization type the upscaler runs with.
+    ///
+    /// Must be the optimization type for which ISuperResolutionFactory::GetSourceSettings() returned
+    /// SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_SUCCESS. Backends that select a quality mode when
+    /// creating their feature (e.g. DLSS) use it; other backends only validate it.
+    SUPER_RESOLUTION_OPTIMIZATION_TYPE OptimizationType DEFAULT_INITIALIZER(SUPER_RESOLUTION_OPTIMIZATION_TYPE_BALANCED);
 };
 typedef struct SuperResolutionDesc SuperResolutionDesc;
 

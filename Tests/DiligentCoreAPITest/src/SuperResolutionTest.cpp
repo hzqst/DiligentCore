@@ -336,7 +336,7 @@ TEST(SuperResolutionTest, QuerySourceSettings)
         Attribs.Flags            = SUPER_RESOLUTION_FLAG_NONE;
 
         SuperResolutionSourceSettings Settings;
-        EXPECT_TRUE(pFactory->GetSourceSettings(Attribs, Settings)) << "Variant " << Variants[VariantIdx].Name;
+        EXPECT_EQ(pFactory->GetSourceSettings(Attribs, Settings), SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_SUCCESS) << "Variant " << Variants[VariantIdx].Name;
 
         EXPECT_GT(Settings.OptimalInputWidth, 0u) << "Variant " << Variants[VariantIdx].Name;
         EXPECT_GT(Settings.OptimalInputHeight, 0u) << "Variant " << Variants[VariantIdx].Name;
@@ -348,14 +348,14 @@ TEST(SuperResolutionTest, QuerySourceSettings)
         EXPECT_GE(Settings.MaxInputHeight, Settings.OptimalInputHeight) << "Variant " << Variants[VariantIdx].Name;
     }
 
-    // Every optimization type either returns its own settings or fails with zero settings; an unavailable
+    // Every optimization type either returns its own settings or is unsupported with zero settings; an unavailable
     // type must not be silently replaced by another one. Available types produce monotonically decreasing
-    // input resolution (enum is ordered from MAX_QUALITY=0 to MAX_PERFORMANCE).
+    // input resolution (enum is ordered from MAX_QUALITY=0 to MAX_PERFORMANCE; NATIVE is checked separately).
     for (const SuperResolutionInfo& Variant : Variants)
     {
         Uint32 PrevWidth = 0;
         Uint32 Widths[SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT]{};
-        for (Uint8 OptimizationType = SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_QUALITY; OptimizationType < SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT; ++OptimizationType)
+        for (Uint8 OptimizationType = SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_QUALITY; OptimizationType < SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE; ++OptimizationType)
         {
             SuperResolutionSourceSettingsAttribs Attribs;
             Attribs.VariantId        = Variant.VariantId;
@@ -365,9 +365,11 @@ TEST(SuperResolutionTest, QuerySourceSettings)
             Attribs.OutputFormat     = TEX_FORMAT_RGBA16_FLOAT;
             Attribs.Flags            = SUPER_RESOLUTION_FLAG_NONE;
 
-            SuperResolutionSourceSettings Settings;
-            if (!pFactory->GetSourceSettings(Attribs, Settings))
+            SuperResolutionSourceSettings                 Settings;
+            const SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS Status = pFactory->GetSourceSettings(Attribs, Settings);
+            if (Status != SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_SUCCESS)
             {
+                EXPECT_EQ(Status, SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_UNSUPPORTED) << Variant.Name << " OptimizationType " << Uint32{OptimizationType};
                 EXPECT_EQ(Settings.OptimalInputWidth, 0u) << Variant.Name << " OptimizationType " << Uint32{OptimizationType};
                 EXPECT_EQ(Settings.OptimalInputHeight, 0u) << Variant.Name << " OptimizationType " << Uint32{OptimizationType};
                 continue;
@@ -385,6 +387,42 @@ TEST(SuperResolutionTest, QuerySourceSettings)
         const bool IsDLSS = strcmp(Variant.Name, "NGX: DLSS") == 0;
         if (IsDLSS && Widths[SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_QUALITY] != 0 && Widths[SUPER_RESOLUTION_OPTIMIZATION_TYPE_HIGH_QUALITY] != 0)
             EXPECT_GT(Widths[SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_QUALITY], Widths[SUPER_RESOLUTION_OPTIMIZATION_TYPE_HIGH_QUALITY]) << Variant.Name;
+    }
+
+    // NATIVE is never substituted with a smaller input: it either renders at the output resolution, or it is
+    // unsupported. Variants that do not report native resolution support never provide it.
+    for (const SuperResolutionInfo& Variant : Variants)
+    {
+        SuperResolutionSourceSettingsAttribs Attribs;
+        Attribs.VariantId        = Variant.VariantId;
+        Attribs.OutputWidth      = 1920;
+        Attribs.OutputHeight     = 1080;
+        Attribs.OptimizationType = SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE;
+        Attribs.OutputFormat     = TEX_FORMAT_RGBA16_FLOAT;
+        Attribs.Flags            = SUPER_RESOLUTION_FLAG_NONE;
+
+        SuperResolutionSourceSettings                 Settings;
+        const SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS Status = pFactory->GetSourceSettings(Attribs, Settings);
+
+        const bool NativeResolutionSupported = Variant.Type == SUPER_RESOLUTION_TYPE_TEMPORAL &&
+            (Variant.TemporalCapFlags & SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_NATIVE_RESOLUTION) != 0;
+        if (!NativeResolutionSupported)
+            EXPECT_EQ(Status, SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_UNSUPPORTED) << Variant.Name;
+
+        if (Status != SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_SUCCESS)
+        {
+            EXPECT_EQ(Status, SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_UNSUPPORTED) << Variant.Name;
+            EXPECT_EQ(Settings.OptimalInputWidth, 0u) << Variant.Name;
+            EXPECT_EQ(Settings.OptimalInputHeight, 0u) << Variant.Name;
+            continue;
+        }
+
+        EXPECT_EQ(Settings.OptimalInputWidth, Attribs.OutputWidth) << Variant.Name;
+        EXPECT_EQ(Settings.OptimalInputHeight, Attribs.OutputHeight) << Variant.Name;
+        EXPECT_EQ(Settings.MinInputWidth, Attribs.OutputWidth) << Variant.Name;
+        EXPECT_EQ(Settings.MinInputHeight, Attribs.OutputHeight) << Variant.Name;
+        EXPECT_EQ(Settings.MaxInputWidth, Attribs.OutputWidth) << Variant.Name;
+        EXPECT_EQ(Settings.MaxInputHeight, Attribs.OutputHeight) << Variant.Name;
     }
 }
 
@@ -413,7 +451,7 @@ TEST(SuperResolutionTest, QuerySourceSettingsRejectsInvalidAttribs)
     auto ExpectRejected = [&](const SuperResolutionSourceSettingsAttribs& Attribs, const char* Case) {
         SuperResolutionSourceSettings Settings;
         Settings.OptimalInputWidth = 1;
-        EXPECT_FALSE(pFactory->GetSourceSettings(Attribs, Settings)) << Case;
+        EXPECT_EQ(pFactory->GetSourceSettings(Attribs, Settings), SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_ERROR) << Case;
         EXPECT_EQ(Settings.OptimalInputWidth, 0u) << Case;
         EXPECT_EQ(Settings.OptimalInputHeight, 0u) << Case;
         EXPECT_EQ(Settings.MaxInputWidth, 0u) << Case;
@@ -469,22 +507,23 @@ TEST(SuperResolutionTest, CreateTemporalUpscaler)
     QueryAttribs.Flags            = SUPER_RESOLUTION_FLAG_AUTO_EXPOSURE;
 
     SuperResolutionSourceSettings SourceSettings;
-    ASSERT_TRUE(pFactory->GetSourceSettings(QueryAttribs, SourceSettings));
+    ASSERT_EQ(pFactory->GetSourceSettings(QueryAttribs, SourceSettings), SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_SUCCESS);
     ASSERT_GT(SourceSettings.OptimalInputWidth, 0u);
     ASSERT_GT(SourceSettings.OptimalInputHeight, 0u);
 
     SuperResolutionDesc Desc;
-    Desc.Name         = "Test Temporal Upscaler";
-    Desc.VariantId    = pTemporalInfo->VariantId;
-    Desc.OutputWidth  = QueryAttribs.OutputWidth;
-    Desc.OutputHeight = QueryAttribs.OutputHeight;
-    Desc.OutputFormat = QueryAttribs.OutputFormat;
-    Desc.InputWidth   = SourceSettings.OptimalInputWidth;
-    Desc.InputHeight  = SourceSettings.OptimalInputHeight;
-    Desc.ColorFormat  = TEX_FORMAT_RGBA16_FLOAT;
-    Desc.DepthFormat  = TEX_FORMAT_R32_FLOAT;
-    Desc.MotionFormat = TEX_FORMAT_RG16_FLOAT;
-    Desc.Flags        = QueryAttribs.Flags;
+    Desc.Name             = "Test Temporal Upscaler";
+    Desc.VariantId        = pTemporalInfo->VariantId;
+    Desc.OutputWidth      = QueryAttribs.OutputWidth;
+    Desc.OutputHeight     = QueryAttribs.OutputHeight;
+    Desc.OutputFormat     = QueryAttribs.OutputFormat;
+    Desc.InputWidth       = SourceSettings.OptimalInputWidth;
+    Desc.InputHeight      = SourceSettings.OptimalInputHeight;
+    Desc.ColorFormat      = TEX_FORMAT_RGBA16_FLOAT;
+    Desc.DepthFormat      = TEX_FORMAT_R32_FLOAT;
+    Desc.MotionFormat     = TEX_FORMAT_RG16_FLOAT;
+    Desc.Flags            = QueryAttribs.Flags;
+    Desc.OptimizationType = QueryAttribs.OptimizationType;
 
     RefCntAutoPtr<ISuperResolution> pUpscaler;
     pFactory->CreateSuperResolution(Desc, &pUpscaler);
@@ -496,6 +535,7 @@ TEST(SuperResolutionTest, CreateTemporalUpscaler)
     EXPECT_EQ(RetDesc.OutputHeight, 1080u);
     EXPECT_EQ(RetDesc.InputWidth, SourceSettings.OptimalInputWidth);
     EXPECT_EQ(RetDesc.InputHeight, SourceSettings.OptimalInputHeight);
+    EXPECT_EQ(RetDesc.OptimizationType, QueryAttribs.OptimizationType);
 
     // Temporal upscaler should return non-trivial jitter pattern (Halton sequence)
     float JitterX = 0.0f, JitterY = 0.0f;
@@ -508,59 +548,41 @@ TEST(SuperResolutionTest, CreateTemporalUpscaler)
     EXPECT_TRUE(JitterX != PrevJitterX || JitterY != PrevJitterY);
 }
 
-TEST(SuperResolutionTest, ExecuteTemporalUpscaler)
+// Queries the source settings of the optimization type for the temporal variant, creates an upscaler
+// with them and executes two frames, the first one with history reset.
+static void ExecuteTemporalUpscaler(ISuperResolutionFactory* pFactory, const SuperResolutionInfo& TemporalInfo, SUPER_RESOLUTION_OPTIMIZATION_TYPE OptimizationType)
 {
-    auto* pEnv     = GPUTestingEnvironment::GetInstance();
-    auto* pDevice  = pEnv->GetDevice();
-    auto  pFactory = GetFactory();
-    ASSERT_NE(pFactory, nullptr);
-
-    Uint32 NumVariants = 0;
-    pFactory->EnumerateVariants(NumVariants, nullptr);
-    if (NumVariants == 0)
-    {
-        GTEST_SKIP() << "No super resolution variants available on this device";
-    }
-
-    std::vector<SuperResolutionInfo> Variants(NumVariants);
-    pFactory->EnumerateVariants(NumVariants, Variants.data());
-
-    const auto* pTemporalInfo = FindVariantByType(Variants.data(), NumVariants, SUPER_RESOLUTION_TYPE_TEMPORAL);
-    if (pTemporalInfo == nullptr)
-    {
-        GTEST_SKIP() << "Temporal super resolution is not supported by this device";
-    }
-
-    GPUTestingEnvironment::ScopedReset EnvironmentAutoReset;
-
+    auto* pEnv    = GPUTestingEnvironment::GetInstance();
+    auto* pDevice = pEnv->GetDevice();
 
     // Query optimal input resolution
     SuperResolutionSourceSettingsAttribs QueryAttribs{};
-    QueryAttribs.VariantId        = pTemporalInfo->VariantId;
+    QueryAttribs.VariantId        = TemporalInfo.VariantId;
     QueryAttribs.OutputWidth      = 1920;
     QueryAttribs.OutputHeight     = 1080;
-    QueryAttribs.OptimizationType = SUPER_RESOLUTION_OPTIMIZATION_TYPE_BALANCED;
+    QueryAttribs.OptimizationType = OptimizationType;
     QueryAttribs.OutputFormat     = TEX_FORMAT_RGBA16_FLOAT;
     QueryAttribs.Flags            = SUPER_RESOLUTION_FLAG_AUTO_EXPOSURE;
 
     SuperResolutionSourceSettings SourceSettings{};
-    ASSERT_TRUE(pFactory->GetSourceSettings(QueryAttribs, SourceSettings));
+    ASSERT_EQ(pFactory->GetSourceSettings(QueryAttribs, SourceSettings), SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_SUCCESS);
     ASSERT_GT(SourceSettings.OptimalInputWidth, 0u);
     ASSERT_GT(SourceSettings.OptimalInputHeight, 0u);
 
     // Create upscaler
     SuperResolutionDesc UpscalerDesc{};
-    UpscalerDesc.Name         = "Test Temporal Execute Upscaler";
-    UpscalerDesc.VariantId    = pTemporalInfo->VariantId;
-    UpscalerDesc.OutputWidth  = QueryAttribs.OutputWidth;
-    UpscalerDesc.OutputHeight = QueryAttribs.OutputHeight;
-    UpscalerDesc.OutputFormat = QueryAttribs.OutputFormat;
-    UpscalerDesc.InputWidth   = SourceSettings.OptimalInputWidth;
-    UpscalerDesc.InputHeight  = SourceSettings.OptimalInputHeight;
-    UpscalerDesc.ColorFormat  = TEX_FORMAT_RGBA16_FLOAT;
-    UpscalerDesc.DepthFormat  = TEX_FORMAT_R32_FLOAT;
-    UpscalerDesc.MotionFormat = TEX_FORMAT_RG16_FLOAT;
-    UpscalerDesc.Flags        = QueryAttribs.Flags;
+    UpscalerDesc.Name             = "Test Temporal Execute Upscaler";
+    UpscalerDesc.VariantId        = TemporalInfo.VariantId;
+    UpscalerDesc.OutputWidth      = QueryAttribs.OutputWidth;
+    UpscalerDesc.OutputHeight     = QueryAttribs.OutputHeight;
+    UpscalerDesc.OutputFormat     = QueryAttribs.OutputFormat;
+    UpscalerDesc.InputWidth       = SourceSettings.OptimalInputWidth;
+    UpscalerDesc.InputHeight      = SourceSettings.OptimalInputHeight;
+    UpscalerDesc.ColorFormat      = TEX_FORMAT_RGBA16_FLOAT;
+    UpscalerDesc.DepthFormat      = TEX_FORMAT_R32_FLOAT;
+    UpscalerDesc.MotionFormat     = TEX_FORMAT_RG16_FLOAT;
+    UpscalerDesc.Flags            = QueryAttribs.Flags;
+    UpscalerDesc.OptimizationType = QueryAttribs.OptimizationType;
 
     RefCntAutoPtr<ISuperResolution> pUpscaler;
     pFactory->CreateSuperResolution(UpscalerDesc, &pUpscaler);
@@ -654,6 +676,141 @@ TEST(SuperResolutionTest, ExecuteTemporalUpscaler)
 
     pContext->Flush();
     pContext->WaitForIdle();
+}
+
+TEST(SuperResolutionTest, ExecuteTemporalUpscaler)
+{
+    auto pFactory = GetFactory();
+    ASSERT_NE(pFactory, nullptr);
+
+    Uint32 NumVariants = 0;
+    pFactory->EnumerateVariants(NumVariants, nullptr);
+    if (NumVariants == 0)
+    {
+        GTEST_SKIP() << "No super resolution variants available on this device";
+    }
+
+    std::vector<SuperResolutionInfo> Variants(NumVariants);
+    pFactory->EnumerateVariants(NumVariants, Variants.data());
+
+    const auto* pTemporalInfo = FindVariantByType(Variants.data(), NumVariants, SUPER_RESOLUTION_TYPE_TEMPORAL);
+    if (pTemporalInfo == nullptr)
+    {
+        GTEST_SKIP() << "Temporal super resolution is not supported by this device";
+    }
+
+    GPUTestingEnvironment::ScopedReset EnvironmentAutoReset;
+
+    ExecuteTemporalUpscaler(pFactory, *pTemporalInfo, SUPER_RESOLUTION_OPTIMIZATION_TYPE_BALANCED);
+}
+
+// The upscaler creates its backend feature with the native resolution type (e.g. DLAA) on the first execution.
+TEST(SuperResolutionTest, ExecuteNativeResolutionUpscaler)
+{
+    auto pFactory = GetFactory();
+    ASSERT_NE(pFactory, nullptr);
+
+    Uint32 NumVariants = 0;
+    pFactory->EnumerateVariants(NumVariants, nullptr);
+    std::vector<SuperResolutionInfo> Variants(NumVariants);
+    pFactory->EnumerateVariants(NumVariants, Variants.data());
+
+    const auto NativeIt = std::find_if(Variants.begin(), Variants.end(), [](const SuperResolutionInfo& Variant) {
+        return Variant.Type == SUPER_RESOLUTION_TYPE_TEMPORAL && (Variant.TemporalCapFlags & SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_NATIVE_RESOLUTION) != 0;
+    });
+    if (NativeIt == Variants.end())
+    {
+        GTEST_SKIP() << "Native resolution super resolution is not supported by this device";
+    }
+
+    SuperResolutionSourceSettingsAttribs QueryAttribs;
+    QueryAttribs.VariantId        = NativeIt->VariantId;
+    QueryAttribs.OutputWidth      = 1920;
+    QueryAttribs.OutputHeight     = 1080;
+    QueryAttribs.OptimizationType = SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE;
+    QueryAttribs.OutputFormat     = TEX_FORMAT_RGBA16_FLOAT;
+    QueryAttribs.Flags            = SUPER_RESOLUTION_FLAG_AUTO_EXPOSURE;
+
+    SuperResolutionSourceSettings SourceSettings;
+    if (pFactory->GetSourceSettings(QueryAttribs, SourceSettings) == SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS_UNSUPPORTED)
+    {
+        GTEST_SKIP() << NativeIt->Name << " does not provide native resolution for 1920x1080 output";
+    }
+
+    GPUTestingEnvironment::ScopedReset EnvironmentAutoReset;
+
+    ExecuteTemporalUpscaler(pFactory, *NativeIt, SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE);
+}
+
+TEST(SuperResolutionTest, CreateRejectsInvalidOptimizationType)
+{
+    auto pFactory = GetFactory();
+    ASSERT_NE(pFactory, nullptr);
+
+    Uint32 NumVariants = 0;
+    pFactory->EnumerateVariants(NumVariants, nullptr);
+    std::vector<SuperResolutionInfo> Variants(NumVariants);
+    pFactory->EnumerateVariants(NumVariants, Variants.data());
+
+    if (FindVariantByType(Variants.data(), NumVariants, SUPER_RESOLUTION_TYPE_TEMPORAL) == nullptr)
+    {
+        GTEST_SKIP() << "Temporal super resolution is not supported by this device";
+    }
+
+    GPUTestingEnvironment::ScopedReset EnvironmentAutoReset;
+
+    auto ExpectRejected = [&](const SuperResolutionDesc& Desc, const std::string& Case, const char* ValidationError) {
+        // Expected substrings are matched from the back: the validation error comes first, then the factory's.
+        TestingEnvironment::ErrorScope ExpectedErrors{"Failed to create super resolution upscaler", ValidationError};
+
+        RefCntAutoPtr<ISuperResolution> pUpscaler;
+        pFactory->CreateSuperResolution(Desc, &pUpscaler);
+        EXPECT_EQ(pUpscaler, nullptr) << Case;
+    };
+
+    for (const SuperResolutionInfo& Variant : Variants)
+    {
+        if (Variant.Type != SUPER_RESOLUTION_TYPE_TEMPORAL)
+            continue;
+
+        SuperResolutionDesc ValidDesc;
+        ValidDesc.Name             = "Test Invalid Optimization Type Upscaler";
+        ValidDesc.VariantId        = Variant.VariantId;
+        ValidDesc.OutputWidth      = 1920;
+        ValidDesc.OutputHeight     = 1080;
+        ValidDesc.OutputFormat     = TEX_FORMAT_RGBA16_FLOAT;
+        ValidDesc.InputWidth       = ValidDesc.OutputWidth;
+        ValidDesc.InputHeight      = ValidDesc.OutputHeight;
+        ValidDesc.ColorFormat      = TEX_FORMAT_RGBA16_FLOAT;
+        ValidDesc.DepthFormat      = TEX_FORMAT_R32_FLOAT;
+        ValidDesc.MotionFormat     = TEX_FORMAT_RG16_FLOAT;
+        ValidDesc.Flags            = SUPER_RESOLUTION_FLAG_AUTO_EXPOSURE;
+        ValidDesc.OptimizationType = SUPER_RESOLUTION_OPTIMIZATION_TYPE_BALANCED;
+
+        const std::string VariantName = Variant.Name;
+
+        SuperResolutionDesc InvalidType = ValidDesc;
+        InvalidType.OptimizationType    = SUPER_RESOLUTION_OPTIMIZATION_TYPE_COUNT;
+        ExpectRejected(InvalidType, VariantName + ": invalid optimization type", "Invalid optimization type");
+
+        SuperResolutionDesc NativeWithSmallerInput = ValidDesc;
+        NativeWithSmallerInput.OptimizationType    = SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE;
+        NativeWithSmallerInput.InputWidth          = ValidDesc.OutputWidth / 2;
+        NativeWithSmallerInput.InputHeight         = ValidDesc.OutputHeight / 2;
+
+        SuperResolutionDesc NativeAtOutput = ValidDesc;
+        NativeAtOutput.OptimizationType    = SUPER_RESOLUTION_OPTIMIZATION_TYPE_NATIVE;
+
+        if ((Variant.TemporalCapFlags & SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_NATIVE_RESOLUTION) != 0)
+        {
+            ExpectRejected(NativeWithSmallerInput, VariantName + ": native resolution with a smaller input", "Input resolution must equal output resolution");
+        }
+        else
+        {
+            ExpectRejected(NativeWithSmallerInput, VariantName + ": native resolution without support", "does not support native resolution");
+            ExpectRejected(NativeAtOutput, VariantName + ": native resolution at the output without support", "does not support native resolution");
+        }
+    }
 }
 
 TEST(SuperResolution_CInterface, Factory)

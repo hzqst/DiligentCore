@@ -58,7 +58,7 @@ public:
     virtual void EnumerateVariants(std::vector<SuperResolutionInfo>& Variants) override final;
 
     /// Queries DLSS source settings for exactly the requested optimization type using NGX capability parameters.
-    virtual bool GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs, SuperResolutionSourceSettings& Settings) override final;
+    virtual SUPER_RESOLUTION_SOURCE_SETTINGS_STATUS GetSourceSettings(const SuperResolutionSourceSettingsAttribs& Attribs, SuperResolutionSourceSettings& Settings) override final;
 
 protected:
     RefCntAutoPtr<IRenderDevice> m_pDevice;
@@ -118,11 +118,12 @@ protected:
         m_DLSSFeatureFlags = DLSSCreateFeatureFlags;
 
         NVSDK_NGX_DLSS_Create_Params DLSSCreateParams{};
-        DLSSCreateParams.Feature.InWidth        = m_Desc.InputWidth;
-        DLSSCreateParams.Feature.InHeight       = m_Desc.InputHeight;
-        DLSSCreateParams.Feature.InTargetWidth  = m_Desc.OutputWidth;
-        DLSSCreateParams.Feature.InTargetHeight = m_Desc.OutputHeight;
-        DLSSCreateParams.InFeatureCreateFlags   = DLSSCreateFeatureFlags;
+        DLSSCreateParams.Feature.InWidth            = m_Desc.InputWidth;
+        DLSSCreateParams.Feature.InHeight           = m_Desc.InputHeight;
+        DLSSCreateParams.Feature.InTargetWidth      = m_Desc.OutputWidth;
+        DLSSCreateParams.Feature.InTargetHeight     = m_Desc.OutputHeight;
+        DLSSCreateParams.Feature.InPerfQualityValue = OptimizationTypeToNGXPerfQuality(m_Desc.OptimizationType);
+        DLSSCreateParams.InFeatureCreateFlags       = DLSSCreateFeatureFlags;
 
         NVSDK_NGX_Handle* pFeature = nullptr;
         NVSDK_NGX_Result  Result   = CreateFeature(Attribs.pContext, m_pNGXParams, DLSSCreateParams, &pFeature);
