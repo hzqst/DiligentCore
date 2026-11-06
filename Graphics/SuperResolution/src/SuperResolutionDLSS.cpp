@@ -111,6 +111,7 @@ void DLSSProviderBase::EnumerateVariants(std::vector<SuperResolutionInfo>& Varia
     if (DLSSAvailable)
     {
         SuperResolutionInfo Info{};
+        Info.Provider         = SUPER_RESOLUTION_PROVIDER_DLSS;
         Info.Type             = SUPER_RESOLUTION_TYPE_TEMPORAL;
         Info.TemporalCapFlags = SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_NATIVE |
             SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_EXPOSURE_SCALE_TEXTURE |

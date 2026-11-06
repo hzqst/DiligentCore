@@ -32,6 +32,7 @@
 #include "GraphicsAccessories.hpp"
 #include "SuperResolutionFactory.h"
 #include "SuperResolutionFactoryLoader.h"
+#include "../../../Graphics/SuperResolution/include/SuperResolutionVariants.hpp"
 
 #if ARCHIVER_SUPPORTED
 #    include "SerializationDevice.h"
@@ -91,6 +92,12 @@ TEST(SuperResolutionTest, EnumerateVariants)
     {
         EXPECT_NE(Variants[VariantIdx].Name[0], '\0') << "Variant " << VariantIdx << " has empty name";
         EXPECT_NE(Variants[VariantIdx].VariantId, IID_Unknown) << "Variant " << VariantIdx << " has unknown UID";
+        const auto& Info             = Variants[VariantIdx];
+        const auto  ExpectedProvider = Info.VariantId == VariantId_DLSS ? SUPER_RESOLUTION_PROVIDER_DLSS :
+                                                                         Info.VariantId == VariantId_FSRSpatial ? SUPER_RESOLUTION_PROVIDER_FSR :
+                                                                                                                  Info.VariantId == VariantId_MetalFXSpatial || Info.VariantId == VariantId_MetalFXTemporal ? SUPER_RESOLUTION_PROVIDER_METALFX :
+                                                                                                                                                                                                              SUPER_RESOLUTION_PROVIDER_DIRECTSR;
+        EXPECT_EQ(ExpectedProvider, Info.Provider) << Info.Name;
     }
 
     // Keep guard elements allocated so capacity regressions are detected without
@@ -110,6 +117,17 @@ TEST(SuperResolutionTest, EnumerateVariants)
         for (Uint32 Idx = std::min(Capacity, NumVariants); Idx < LimitedVariants.size(); ++Idx)
             EXPECT_EQ(LimitedVariants[Idx], Guard);
     }
+}
+
+TEST(SuperResolutionTest, ProviderIdentity)
+{
+    SuperResolutionInfo Info;
+    EXPECT_EQ(SUPER_RESOLUTION_PROVIDER_UNKNOWN, Info.Provider);
+    SuperResolutionInfo Other = Info;
+    Other.Provider            = SUPER_RESOLUTION_PROVIDER_FSR;
+    EXPECT_FALSE(Info == Other);
+    Info.Provider = Other.Provider;
+    EXPECT_TRUE(Info == Other);
 }
 
 #if ARCHIVER_SUPPORTED
@@ -384,7 +402,7 @@ TEST(SuperResolutionTest, QuerySourceSettings)
 
         // Before exact queries, an unavailable DLSS MAX_QUALITY (UltraQuality) returned the HIGH_QUALITY
         // resolution. Other providers (e.g. DirectSR FSR 3.1) may legitimately report equal sizes.
-        const bool IsDLSS = strcmp(Variant.Name, "NGX: DLSS") == 0;
+        const bool IsDLSS = Variant.Provider == SUPER_RESOLUTION_PROVIDER_DLSS;
         if (IsDLSS && Widths[SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_QUALITY] != 0 && Widths[SUPER_RESOLUTION_OPTIMIZATION_TYPE_HIGH_QUALITY] != 0)
             EXPECT_GT(Widths[SUPER_RESOLUTION_OPTIMIZATION_TYPE_MAX_QUALITY], Widths[SUPER_RESOLUTION_OPTIMIZATION_TYPE_HIGH_QUALITY]) << Variant.Name;
     }

@@ -272,7 +272,8 @@ public:
                 continue;
 
             SuperResolutionInfo Info{};
-            Info.Type = SUPER_RESOLUTION_TYPE_TEMPORAL;
+            Info.Provider = SUPER_RESOLUTION_PROVIDER_DIRECTSR;
+            Info.Type     = SUPER_RESOLUTION_TYPE_TEMPORAL;
 
             Info.TemporalCapFlags = SUPER_RESOLUTION_TEMPORAL_CAP_FLAG_NATIVE;
             if (VariantDesc.Flags & DSR_SUPERRES_VARIANT_FLAG_SUPPORTS_EXPOSURE_SCALE_TEXTURE)
