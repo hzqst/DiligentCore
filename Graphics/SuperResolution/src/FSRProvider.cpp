@@ -210,6 +210,7 @@ public:
     virtual void EnumerateVariants(std::vector<SuperResolutionInfo>& Variants) override final
     {
         SuperResolutionInfo Info{};
+        Info.Provider  = SUPER_RESOLUTION_PROVIDER_FSR;
         Info.VariantId = VariantId_FSRSpatial;
         snprintf(Info.Name, sizeof(Info.Name), "Software: FSR Spatial");
         Info.Type            = SUPER_RESOLUTION_TYPE_SPATIAL;

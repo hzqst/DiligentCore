@@ -40,9 +40,9 @@
 
 DILIGENT_BEGIN_NAMESPACE(Diligent)
 
-// {79A904EC-EB17-4339-86BC-8A37632B0BD1}
+// {1A0B037E-E2C9-4CA0-9B20-3C0E48C1EA1C}
 static DILIGENT_CONSTEXPR INTERFACE_ID IID_SuperResolutionFactory =
-    {0x79a904ec, 0xeb17, 0x4339, {0x86, 0xbc, 0x8a, 0x37, 0x63, 0x2b, 0xb, 0xd1}};
+    {0x1a0b037e, 0xe2c9, 0x4ca0, {0x9b, 0x20, 0x3c, 0x0e, 0x48, 0xc1, 0xea, 0x1c}};
 
 // clang-format off
 
@@ -79,6 +79,17 @@ DILIGENT_TYPED_ENUM(SUPER_RESOLUTION_TYPE, Uint8)
 
     /// Temporal upscaling (uses motion vectors and history accumulation).
     SUPER_RESOLUTION_TYPE_TEMPORAL
+};
+
+/// Provider exposing a super resolution variant. A DirectSR variant remains a DirectSR variant
+/// even when the implementation selected by its driver is DLSS or FSR.
+DILIGENT_TYPED_ENUM(SUPER_RESOLUTION_PROVIDER, Uint8)
+{
+    SUPER_RESOLUTION_PROVIDER_UNKNOWN = 0u,
+    SUPER_RESOLUTION_PROVIDER_DLSS,
+    SUPER_RESOLUTION_PROVIDER_DIRECTSR,
+    SUPER_RESOLUTION_PROVIDER_FSR,
+    SUPER_RESOLUTION_PROVIDER_METALFX
 };
 
 /// Capability flags for spatial super resolution upscaling.
@@ -165,6 +176,9 @@ struct SuperResolutionInfo
     };
 #endif
 
+    /// Provider identity, independent of the display name and runtime VariantId.
+    SUPER_RESOLUTION_PROVIDER Provider DEFAULT_INITIALIZER(SUPER_RESOLUTION_PROVIDER_UNKNOWN);
+
 #if DILIGENT_CPP_INTERFACE
     constexpr Uint32 SpatialOrTemporalCapFlags() const
     {
@@ -185,6 +199,7 @@ struct SuperResolutionInfo
     {
         return (VariantId == RHS.VariantId &&
                 Type      == RHS.Type      &&
+                Provider  == RHS.Provider  &&
                 SpatialOrTemporalCapFlags() == RHS.SpatialOrTemporalCapFlags() &&
                 memcmp(Name, RHS.Name, sizeof(Name)) == 0);
     }

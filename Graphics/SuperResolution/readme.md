@@ -177,6 +177,15 @@ When they are provided, the dearchiver must contain both named graphics pipeline
 
 ### Enumerating Available Variants
 
+`SuperResolutionInfo::Provider` identifies DLSS, DirectSR, FSR or MetalFX independently of the
+human-readable `Name` and the variant's `VariantId`. In particular, DirectSR exposes runtime GUIDs
+and may wrap a driver-provided DLSS implementation; its provider is still
+`SUPER_RESOLUTION_PROVIDER_DIRECTSR`. Select a provider using this field and pass the selected
+`VariantId` to queries and creation. Do not classify variants by their display name.
+
+Adding this field changes the enumeration structure layout and the factory IID. Rebuild consumers
+and deploy their matching SuperResolution module together (Diligent API 256023).
+
 Query the list of upscaler variants supported by the current device:
 
 ```cpp
